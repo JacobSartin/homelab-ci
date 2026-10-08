@@ -1,0 +1,38 @@
+name: Check container images
+description: Verify that changed container images exist, match their pinned digests and provide the required platforms
+
+inputs:
+  images-file:
+    description: JSON array of image references, as written by `flate diff images -o json`
+    required: true
+  report-file:
+    description: Markdown report destination
+    required: true
+  platforms:
+    description: Newline- or comma-delimited platforms every image must provide
+    default: linux/amd64
+
+outputs:
+  checked:
+    description: Number of images verified
+    value: ${{ steps.check.outputs.checked }}
+  failed:
+    description: Number of images that failed verification
+    value: ${{ steps.check.outputs.failed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Verify images against their registries
+      id: check
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        CHECK_IMAGES_MODULE: ${{ github.action_path }}/../../src/check-images.mts
+        IMAGES_FILE: ${{ inputs.images-file }}
+        REPORT_FILE: ${{ inputs.report-file }}
+        PLATFORMS: ${{ inputs.platforms }}
+      with:
+        script: |
+          const { pathToFileURL } = await import('node:url');
+          const { default: run } = await import(pathToFileURL(process.env.CHECK_IMAGES_MODULE).href);
+          await run({ core });

@@ -1,0 +1,47 @@
+name: Validate schemas
+description: Run Kubeconform over Flate's rendered manifests with placeholder substitution
+
+inputs:
+  rendered-file:
+    description: Rendered manifests produced by the flate action
+    required: true
+  report-file:
+    description: Markdown report destination
+    required: true
+  substitutions:
+    description: Newline-delimited NAME=value pairs replacing Flux postBuild placeholders before validation
+    default: ""
+  skip-kinds:
+    description: Newline- or comma-delimited kinds (or group/version/kind) excluded from schema validation
+    default: ""
+  schema-location:
+    description: Kubeconform schema location for custom resources
+    default: https://kubernetes-schemas.pages.dev/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+  kubeconform-version:
+    description: Kubeconform release to install
+    default: 0.8.0
+
+runs:
+  using: composite
+  steps:
+    - name: Install Kubeconform
+      uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+      with:
+        # Pin the CLI too: the action otherwise downloads the latest release.
+        version: 2026.9.2
+        cache: true
+        cache_key_prefix: homelab-ci-kubeconform-v1
+        install_args: kubeconform@${{ inputs.kubeconform-version }}
+        tool_versions: |
+          kubeconform ${{ inputs.kubeconform-version }}
+
+    - name: Validate rendered manifests
+      shell: bash
+      env:
+        RENDERED_FILE: ${{ inputs.rendered-file }}
+        REPORT_FILE: ${{ inputs.report-file }}
+        SUBSTITUTIONS: ${{ inputs.substitutions }}
+        SKIP_KINDS: ${{ inputs.skip-kinds }}
+        SCHEMA_LOCATION: ${{ inputs.schema-location }}
+        VALIDATE_SCRIPT: ${{ github.action_path }}/validate.sh
+      run: bash "$VALIDATE_SCRIPT"

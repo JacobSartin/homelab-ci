@@ -1,0 +1,43 @@
+name: Evaluate Renovate update
+description: Decide whether a validated Renovate pull request should merge or require attention
+
+inputs:
+  bot-login:
+    description: Exact GitHub App bot login permitted to automerge
+    default: renovate[bot]
+  github-token:
+    description: Token used to inspect the pull request
+    required: true
+
+outputs:
+  decision:
+    description: Update handling decision (merge, notify or ignore)
+    value: ${{ steps.policy.outputs.decision }}
+  make-manual:
+    description: Whether the pull request should be marked for manual review
+    value: ${{ steps.policy.outputs.make-manual }}
+  pr-number:
+    description: Pull request number associated with the validation run
+    value: ${{ steps.policy.outputs.pr-number }}
+  head-sha:
+    description: Pull request head revision that was validated
+    value: ${{ steps.policy.outputs.head-sha }}
+  reason:
+    description: Human-readable reason for the decision
+    value: ${{ steps.policy.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - name: Evaluate policy
+      id: policy
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        RENOVATE_BOT_LOGIN: ${{ inputs.bot-login }}
+        POLICY_MODULE: ${{ github.action_path }}/../../src/automerge-policy.mts
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const { pathToFileURL } = await import('node:url');
+          const { default: run } = await import(pathToFileURL(process.env.POLICY_MODULE).href);
+          await run({ github, context, core, botLogin: process.env.RENOVATE_BOT_LOGIN });

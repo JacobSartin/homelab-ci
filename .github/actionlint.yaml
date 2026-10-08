@@ -1,0 +1,11 @@
+self-hosted-runner:
+  labels:
+    - actions-runner
+    - actions-runner-media
+
+paths:
+  .github/workflows/*.yaml:
+    # actionlint v1.7.12 predates the job.workflow_repository and
+    # job.workflow_sha context properties used to check out this repository.
+    ignore:
+      - 'property "workflow_(repository|sha)" is not defined in object type'

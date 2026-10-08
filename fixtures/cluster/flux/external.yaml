@@ -1,0 +1,16 @@
+---
+# A dependency that another repository provides in the live cluster. The
+# suspended stand-in lets Flate resolve dependsOn without rendering anything.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: external-dependency
+  namespace: flux-system
+spec:
+  interval: 24h
+  path: ./fixtures/cluster/flux
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: fixture
+  suspend: true

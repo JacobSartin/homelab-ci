@@ -1,0 +1,49 @@
+name: Notify about Renovate update
+description: Assign and notify the configured user when a Renovate pull request needs attention
+
+inputs:
+  github-token:
+    description: Token used to update the pull request
+    required: true
+  assignee:
+    description: GitHub user assigned when the pull request needs attention
+    required: true
+  make-manual:
+    description: Whether to replace the automerge label with the manual label
+    required: true
+  merge-outcome:
+    description: Outcome reported by the merge-update action
+    default: ""
+  merge-reason:
+    description: Reason reported by the merge-update action
+    default: ""
+  merge-result:
+    description: Result of the merge job
+    required: true
+  policy-reason:
+    description: Human-readable reason reported by the policy action
+    default: ""
+  pr-number:
+    description: Pull request number to update
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Assign and notify
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ASSIGNEE: ${{ inputs.assignee }}
+        MAKE_MANUAL: ${{ inputs.make-manual }}
+        MERGE_OUTCOME: ${{ inputs.merge-outcome }}
+        MERGE_REASON: ${{ inputs.merge-reason }}
+        MERGE_RESULT: ${{ inputs.merge-result }}
+        NOTIFY_MODULE: ${{ github.action_path }}/../../src/notify-update.mts
+        POLICY_REASON: ${{ inputs.policy-reason }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const { pathToFileURL } = await import('node:url');
+          const { default: run } = await import(pathToFileURL(process.env.NOTIFY_MODULE).href);
+          await run({ github, context, core });

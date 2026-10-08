@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          # Pin the CLI too: the action otherwise downloads the latest release.
+          version: 2026.9.2
+          cache: true
+          cache_key_prefix: homelab-ci-tools-v1
+          tool_versions: |
+            actionlint 1.7.12
+            node 24.13.0
+            shellcheck 0.11.0
+
+      - name: Lint workflows
+        run: actionlint -config-file .github/actionlint.yaml
+
+      - name: Lint shell scripts
+        run: shellcheck actions/*/*.sh
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+  # Exercise the reusable workflow end to end against the fixture repository so
+  # changes to the actions are validated before consumers pick them up.
+  fixture:
+    name: Fixture
+    uses: ./.github/workflows/validate.yaml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      path: fixtures/cluster
+      substitutions: |-
+        BASE_DOMAIN=example.invalid

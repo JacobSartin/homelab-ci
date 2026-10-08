@@ -1,0 +1,69 @@
+name: Render with Flate
+description: Reconcile a Flux repository offline, fail on unrendered resources, and emit the rendered manifests, diff and changed images
+
+inputs:
+  working-directory:
+    description: Checkout of the repository to render
+    default: .
+  path:
+    description: Flux root to scan, relative to working-directory
+    default: .
+  base:
+    description: Baseline git revision for diffs; empty renders without a diff
+    default: ""
+  api-versions:
+    description: Comma-separated Kubernetes API versions available to chart templates
+    default: ""
+  allowed-skips:
+    description: Newline-delimited `Kind namespace/name` entries allowed to stay skipped (sources only the live cluster can fetch)
+    default: ""
+  output-dir:
+    description: Directory receiving test.txt, test-report.md, rendered.yaml, diff.md and images.json
+    default: ${{ runner.temp }}/render
+  flate-version:
+    description: Flate release to install
+    default: 0.6.5
+
+outputs:
+  passed:
+    description: Number of resources Flate reconciled successfully
+    value: ${{ steps.evaluate.outputs.passed }}
+  output-dir:
+    description: Directory holding the render results
+    value: ${{ inputs.output-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Flate
+      uses: home-operations/flate/action@631b76b69c4e58c6f4d1cb01e23616fa61aebafa # v0.6.5
+      with:
+        version: ${{ inputs.flate-version }}
+        base: ""
+        cache: "true"
+
+    - name: Render repository
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FLATE_PATH: ${{ inputs.path }}
+        FLATE_ALLOW_MISSING_SECRETS: "true"
+        FLATE_API_VERSIONS: ${{ inputs.api-versions }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        RENDER_BASE: ${{ inputs.base }}
+        RENDER_SCRIPT: ${{ github.action_path }}/render.sh
+      run: bash "$RENDER_SCRIPT"
+
+    - name: Evaluate reconcile results
+      id: evaluate
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        EVALUATE_MODULE: ${{ github.action_path }}/../../src/evaluate-render.mts
+        TEST_OUTPUT_FILE: ${{ inputs.output-dir }}/test.txt
+        REPORT_FILE: ${{ inputs.output-dir }}/test-report.md
+        ALLOWED_SKIPS: ${{ inputs.allowed-skips }}
+      with:
+        script: |
+          const { pathToFileURL } = await import('node:url');
+          const { default: run } = await import(pathToFileURL(process.env.EVALUATE_MODULE).href);
+          await run({ core });

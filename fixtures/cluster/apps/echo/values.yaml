@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/app-template-5.2.1/charts/other/app-template/values.schema.json
+controllers:
+  echo:
+    containers:
+      app:
+        image:
+          repository: docker.io/library/busybox
+          tag: 1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+        command: ["httpd", "-f", "-p", "8080"]
+service:
+  app:
+    controller: echo
+    ports:
+      http:
+        port: 8080

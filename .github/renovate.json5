@@ -1,0 +1,37 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    "github>JacobSartin/cluster//.github/renovate/merge_policy.json5",
+  ],
+  automerge: false,
+  timezone: "America/Chicago",
+  schedule: ["* 2-8 * * *"],
+  packageRules: [
+    {
+      description: "Keep the Flate CLI pin in the render action aligned with the install action",
+      matchPackageNames: ["home-operations/flate"],
+      groupName: "flate",
+    },
+  ],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "Update the Flate CLI default in the render action",
+      managerFilePatterns: ["/^actions/flate/action\.yaml$/"],
+      matchStrings: ["flate-version:\n\s+description: .*\n\s+default: (?<currentValue>\d+\.\d+\.\d+)"],
+      depNameTemplate: "home-operations/flate",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v?(?<version>.*)$",
+    },
+    {
+      customType: "regex",
+      description: "Update the Kubeconform default in the schema action",
+      managerFilePatterns: ["/^actions/schema/action\.yaml$/"],
+      matchStrings: ["kubeconform-version:\n\s+description: .*\n\s+default: (?<currentValue>\d+\.\d+\.\d+)"],
+      depNameTemplate: "yannh/kubeconform",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v?(?<version>.*)$",
+    },
+  ],
+}

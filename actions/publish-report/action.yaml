@@ -1,0 +1,41 @@
+name: Publish validation report
+description: Write the validation report to the job summary and keep a single pull request comment up to date
+
+inputs:
+  github-token:
+    description: Token used to manage the pull request comment
+    required: true
+  test-report:
+    description: Markdown written by the flate action
+    default: ""
+  schema-report:
+    description: Markdown written by the schema action
+    default: ""
+  image-report:
+    description: Markdown written by the check-images action
+    default: ""
+  diff-file:
+    description: Flate diff in GitHub output format
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Publish report
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        PUBLISH_MODULE: ${{ github.action_path }}/../../src/publish-report.mts
+        TEST_REPORT: ${{ inputs.test-report }}
+        SCHEMA_REPORT: ${{ inputs.schema-report }}
+        IMAGE_REPORT: ${{ inputs.image-report }}
+        DIFF_FILE: ${{ inputs.diff-file }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const { pathToFileURL } = await import('node:url');
+          const { default: run } = await import(pathToFileURL(process.env.PUBLISH_MODULE).href);
+          await run({
+            github,
+            context: { repo: context.repo, issue: context.issue, serverUrl: context.serverUrl, runId: context.runId, eventName: context.eventName },
+            summary: async markdown => { await core.summary.addRaw(markdown, true).write(); },
+          });

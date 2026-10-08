@@ -1,0 +1,216 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: GitOps Validation
+
+# Reusable validation for Flux repositories: render everything offline with
+# Flate, schema-check the rendered manifests, verify changed container images
+# against their registries, and publish one report on the pull request.
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label
+        type: string
+        default: ubuntu-latest
+      path:
+        description: Flux root to render, relative to the repository
+        type: string
+        default: "."
+      api-versions:
+        description: Comma-separated API versions available to chart templates (for example monitoring.coreos.com/v1)
+        type: string
+        default: ""
+      allowed-skips:
+        description: Newline-delimited `Kind namespace/name` entries allowed to stay skipped because only the live cluster can fetch them
+        type: string
+        default: ""
+      substitutions:
+        description: Newline-delimited NAME=value pairs replacing Flux postBuild placeholders before schema validation
+        type: string
+        default: ""
+      kubeconform-skip:
+        description: Newline-delimited kinds or group/version/kind entries excluded from schema validation
+        type: string
+        default: ""
+      platforms:
+        description: Platforms every changed container image must provide
+        type: string
+        default: linux/amd64
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Render
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    outputs:
+      passed: ${{ steps.render.outputs.passed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pull request merge commit; its first parent is the base branch
+          # snapshot, so diffs exclude unrelated changes that landed on main.
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          path: repo
+          persist-credentials: false
+
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Render with Flate
+        id: render
+        uses: ./homelab-ci/actions/flate
+        with:
+          working-directory: repo
+          path: ${{ inputs.path }}
+          base: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+          api-versions: ${{ inputs.api-versions }}
+          allowed-skips: ${{ inputs.allowed-skips }}
+          output-dir: ${{ runner.temp }}/render
+
+      - name: Upload render results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gitops-render
+          path: ${{ runner.temp }}/render
+          retention-days: 3
+          if-no-files-found: error
+
+  schema:
+    name: Schemas
+    needs: render
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Download render results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gitops-render
+          path: ${{ runner.temp }}/render
+
+      - name: Validate schemas
+        uses: ./homelab-ci/actions/schema
+        with:
+          rendered-file: ${{ runner.temp }}/render/rendered.yaml
+          report-file: ${{ runner.temp }}/schema-report.md
+          substitutions: ${{ inputs.substitutions }}
+          skip-kinds: ${{ inputs.kubeconform-skip }}
+
+      - name: Upload schema report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gitops-schema-report
+          path: ${{ runner.temp }}/schema-report.md
+          retention-days: 3
+          if-no-files-found: ignore
+
+  images:
+    name: Images
+    needs: render
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Download render results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gitops-render
+          path: ${{ runner.temp }}/render
+
+      - name: Verify changed images
+        uses: ./homelab-ci/actions/check-images
+        with:
+          images-file: ${{ runner.temp }}/render/images.json
+          report-file: ${{ runner.temp }}/image-report.md
+          platforms: ${{ inputs.platforms }}
+
+      - name: Upload image report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gitops-image-report
+          path: ${{ runner.temp }}/image-report.md
+          retention-days: 3
+          if-no-files-found: ignore
+
+  report:
+    name: Report
+    needs: [render, schema, images]
+    if: ${{ always() && needs.render.result != 'skipped' }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Download reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: gitops-*
+          path: ${{ runner.temp }}/reports
+
+      - name: Publish report
+        uses: ./homelab-ci/actions/publish-report
+        with:
+          github-token: ${{ github.token }}
+          test-report: ${{ runner.temp }}/reports/gitops-render/test-report.md
+          schema-report: ${{ runner.temp }}/reports/gitops-schema-report/schema-report.md
+          image-report: ${{ runner.temp }}/reports/gitops-image-report/image-report.md
+          diff-file: ${{ runner.temp }}/reports/gitops-render/diff.md
+
+  result:
+    name: GitOps validation
+    needs: [render, schema, images]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    steps:
+      - name: Require successful validation
+        env:
+          RENDER_RESULT: ${{ needs.render.result }}
+          SCHEMA_RESULT: ${{ needs.schema.result }}
+          IMAGES_RESULT: ${{ needs.images.result }}
+        shell: bash
+        run: |
+          failed=0
+          for check in RENDER SCHEMA IMAGES; do
+            result="${check}_RESULT"
+            if [[ "${!result}" != success ]]; then
+              echo "::error::${check,,} did not succeed: ${!result}"
+              failed=1
+            fi
+          done
+          exit "$failed"

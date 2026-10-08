@@ -1,0 +1,185 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Renovate Automerge
+
+# Reusable Renovate automerge. Callers trigger it from a workflow_run event of
+# their validation workflow and should declare a queued concurrency group so
+# merges land one at a time while Flux rolls each one out.
+on:
+  workflow_call:
+    inputs:
+      assignee:
+        description: GitHub user assigned when a pull request needs attention
+        type: string
+        default: JacobSartin
+      bot-login:
+        description: Exact GitHub App bot login permitted to automerge
+        type: string
+        default: sartin-renovate[bot]
+      merge-method:
+        description: merge, squash or rebase
+        type: string
+        default: squash
+      runner:
+        description: Runner label
+        type: string
+        default: ubuntu-latest
+      settle-seconds:
+        description: Seconds to hold the queue after a merge so Flux can roll it out before the next one
+        type: number
+        default: 300
+    secrets:
+      app-id:
+        description: GitHub App ID whose installation token merges pull requests; falls back to the workflow token when unset
+        required: false
+      app-private-key:
+        description: Private key for app-id
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Decide update handling
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      decision: ${{ steps.policy.outputs.decision }}
+      make-manual: ${{ steps.policy.outputs.make-manual }}
+      pr-number: ${{ steps.policy.outputs.pr-number }}
+      head-sha: ${{ steps.policy.outputs.head-sha }}
+      reason: ${{ steps.policy.outputs.reason }}
+    steps:
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Evaluate Renovate update
+        id: policy
+        uses: ./homelab-ci/actions/automerge-policy
+        with:
+          bot-login: ${{ inputs.bot-login }}
+          github-token: ${{ github.token }}
+
+  merge:
+    name: Merge update
+    needs: policy
+    if: needs.policy.outputs.decision == 'merge'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      outcome: ${{ steps.merge.outputs.outcome }}
+      reason: ${{ steps.merge.outputs.reason }}
+    env:
+      # Step conditions cannot read secrets directly; job environment can.
+      HAS_APP: ${{ secrets.app-id != '' && secrets.app-private-key != '' }}
+    steps:
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      # The workflow token cannot merge pull requests that change workflow
+      # files; a GitHub App with the workflows permission can.
+      - name: Create GitHub App token
+        id: app-token
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
+      - name: Merge pull request
+        id: merge
+        uses: ./homelab-ci/actions/merge-update
+        with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
+          pr-number: ${{ needs.policy.outputs.pr-number }}
+          head-sha: ${{ needs.policy.outputs.head-sha }}
+          merge-method: ${{ inputs.merge-method }}
+
+      - name: Hold the queue while Flux rolls out the merge
+        if: steps.merge.outputs.outcome == 'merged' && inputs.settle-seconds > 0
+        env:
+          SETTLE_SECONDS: ${{ inputs.settle-seconds }}
+        shell: bash
+        run: sleep "$SETTLE_SECONDS"
+
+  notify:
+    name: Notify manual action
+    needs: [policy, merge]
+    if: >-
+      ${{
+        always() &&
+        needs.policy.result == 'success' &&
+        (needs.policy.outputs.decision == 'notify' ||
+         needs.merge.result == 'failure' ||
+         (needs.merge.result == 'success' &&
+          needs.merge.outputs.outcome != 'merged' &&
+          needs.merge.outputs.outcome != 'closed' &&
+          needs.merge.outputs.outcome != 'superseded'))
+      }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Assign and notify
+        uses: ./homelab-ci/actions/notify-update
+        with:
+          github-token: ${{ github.token }}
+          assignee: ${{ inputs.assignee }}
+          make-manual: ${{ needs.policy.outputs.make-manual }}
+          merge-outcome: ${{ needs.merge.outputs.outcome }}
+          merge-reason: ${{ needs.merge.outputs.reason }}
+          merge-result: ${{ needs.merge.result }}
+          policy-reason: ${{ needs.policy.outputs.reason }}
+          pr-number: ${{ needs.policy.outputs.pr-number }}
+
+  result:
+    name: Automerge result
+    needs: [policy, merge, notify]
+    if: ${{ always() }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    steps:
+      - name: Check workflow result
+        env:
+          DECISION: ${{ needs.policy.outputs.decision }}
+          MERGE_OUTCOME: ${{ needs.merge.outputs.outcome }}
+          MERGE_RESULT: ${{ needs.merge.result }}
+          NOTIFY_RESULT: ${{ needs.notify.result }}
+          POLICY_RESULT: ${{ needs.policy.result }}
+        shell: bash
+        run: |
+          echo "policy=$POLICY_RESULT decision=$DECISION merge=$MERGE_RESULT outcome=${MERGE_OUTCOME:-n/a} notify=$NOTIFY_RESULT"
+          if [[ "$POLICY_RESULT" == failure || "$MERGE_RESULT" == failure || "$NOTIFY_RESULT" == failure ]]; then
+            exit 1
+          fi
+          case "$MERGE_OUTCOME" in
+            ""|merged|closed|superseded) exit 0 ;;
+            *) echo "::error::merge outcome: $MERGE_OUTCOME"; exit 1 ;;
+          esac
