@@ -66,16 +66,30 @@ test('render script diffs against the baseline and records every result file', (
   });
 });
 
-test('render script lists every image without a baseline and tolerates test failures for the evaluator', () => {
+test('render script lists every image without a baseline', () => {
   withTempDir('render-', dir => {
     const out = path.join(dir, 'out');
-    const { status, output } = run(renderScript, flateStub, { OUTPUT_DIR: out, FLATE_BASE: 'main', TEST_FAILS: 'true' }, dir);
+    const { status } = run(renderScript, flateStub, { OUTPUT_DIR: out, FLATE_BASE: 'main' }, dir);
     assert.equal(status, 0);
-    assert.match(output, /flate test exited with 1/);
-    assert.match(fs.readFileSync(path.join(out, 'calls.txt'), 'utf8'), /flate get images --path \. -o json/);
-    assert.doesNotMatch(fs.readFileSync(path.join(out, 'calls.txt'), 'utf8'), /diff/);
+    const calls = fs.readFileSync(path.join(out, 'calls.txt'), 'utf8');
+    assert.match(calls, /flate get images --path \. -o json/);
+    assert.doesNotMatch(calls, /diff/);
     assert.equal(fs.readFileSync(path.join(out, 'diff.md'), 'utf8'), '');
     assert.match(fs.readFileSync(path.join(out, 'images.json'), 'utf8'), /ghcr\.io\/a\/b:1/);
+  });
+});
+
+test('render script stops after a failed test so the evaluator reports the failing resources', () => {
+  withTempDir('render-', dir => {
+    const out = path.join(dir, 'out');
+    const { status, output } = run(renderScript, flateStub, { OUTPUT_DIR: out, FLATE_BASE: 'main', RENDER_BASE: 'HEAD^1', TEST_FAILS: 'true' }, dir);
+    assert.equal(status, 0);
+    assert.match(output, /flate test exited with 1/);
+    assert.equal(fs.readFileSync(path.join(out, 'calls.txt'), 'utf8'), 'flate test all --path .\n');
+    assert.match(fs.readFileSync(path.join(out, 'test.txt'), 'utf8'), /1 passed/);
+    assert.equal(fs.existsSync(path.join(out, 'rendered.yaml')), false);
+    assert.equal(fs.readFileSync(path.join(out, 'diff.md'), 'utf8'), '');
+    assert.equal(fs.readFileSync(path.join(out, 'images.json'), 'utf8').trim(), '[]');
   });
 });
 

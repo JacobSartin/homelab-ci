@@ -6,6 +6,8 @@ set -euo pipefail
 : "${OUTPUT_DIR:?OUTPUT_DIR is required}"
 path=${FLATE_PATH:-.}
 mkdir -p "$OUTPUT_DIR"
+: > "$OUTPUT_DIR/diff.md"
+echo '[]' > "$OUTPUT_DIR/images.json"
 
 # The install action exports FLATE_BASE=<default branch>; diffs pass --base
 # explicitly and every other command must render the full tree.
@@ -17,7 +19,10 @@ test_status=0
 flate test all --path "$path" | tee "$OUTPUT_DIR/test.txt" || test_status=$?
 echo "::endgroup::"
 if (( test_status != 0 )); then
+  # Building and diffing would repeat the same failures; the evaluation step
+  # turns the test report into the job failure and the pull request comment.
   echo "flate test exited with $test_status; the evaluation step reports the failing resources."
+  exit 0
 fi
 
 echo "::group::flate build all"
@@ -38,7 +43,6 @@ if [[ -n "${RENDER_BASE:-}" ]]; then
   fi
   echo "::endgroup::"
 else
-  : > "$OUTPUT_DIR/diff.md"
   echo "::group::flate get images"
   flate get images --path "$path" -o json > "$OUTPUT_DIR/images.json"
   echo "::endgroup::"
