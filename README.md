@@ -13,7 +13,7 @@ everywhere.
 | --- | --- |
 | Render | [Flate](https://github.com/home-operations/flate) reconciles the whole repository offline: every Kustomization and HelmRelease renders, including Helm charts and `valuesFrom` ConfigMaps. Failed, blocked, or unexpectedly skipped resources fail the job. The diff against the base branch is rendered and classified. |
 | Schemas | Kubeconform validates the rendered manifests (Helm output included) against upstream Kubernetes and CRD schemas. |
-| Images | Runs when the diff introduces container images. Each one is checked against its registry: the tag exists, a pinned digest still matches the tag, and the image provides the required platforms. |
+| Images | Runs when the diff introduces container images. Each one is checked against its registry: the reference the cluster will pull (the pinned digest, or the tag) exists and provides the required platforms. A tag that has moved away from its pinned digest is reported as a warning, since the digest still pulls and Renovate will propose the update. |
 | Report | One pull request comment with the render summary, schema result, image table, warnings and the rendered diff. When a check failed, the comment leads with a mention of `assignee` and assigns them, so the failure notifies someone. |
 | GitOps validation | The single status Renovate waits for before merging. |
 

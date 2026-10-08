@@ -12,7 +12,10 @@ export interface ImageRef {
   digest?: string;
 }
 
-export type ImageStatus = 'ok' | 'missing' | 'digest-mismatch' | 'platform-missing' | 'error';
+// `tag-moved` is informational: the pinned digest still pulls, but the tag now
+// points elsewhere, so Renovate will propose a digest update.
+export type ImageStatus = 'ok' | 'tag-moved' | 'missing' | 'platform-missing' | 'error';
+const FAILING: ReadonlySet<ImageStatus> = new Set(['missing', 'platform-missing', 'error']);
 
 export interface ImageResult {
   image: string;
@@ -114,20 +117,27 @@ export async function checkImage(raw: string, { fetch: fetchImpl = fetch, platfo
     return { image: raw, status: 'error', platforms: [], detail: (error as Error).message };
   }
   try {
-    // Resolve by tag when present so a pinned digest is compared against what
-    // the tag currently points to; otherwise resolve by digest.
-    const reference = ref.tag ?? ref.digest!;
+    // A pinned digest is what the cluster pulls, so verify that manifest; the
+    // tag is only consulted to report drift. Without a pin, resolve the tag.
+    const reference = ref.digest ?? ref.tag!;
     const response = await fetchManifest(ref, reference, fetchImpl);
     if (response.status === 404) {
-      return { image: raw, status: 'missing', platforms: [], detail: `${ref.registry}/${ref.repository}:${reference} not found` };
+      return { image: raw, status: 'missing', platforms: [], detail: `${ref.registry}/${ref.repository}@${reference} not found`.replace('@' + (ref.tag ?? ''), ':' + (ref.tag ?? '')) };
     }
     if (!response.ok) {
       return { image: raw, status: 'error', platforms: [], detail: `registry responded ${response.status} for ${reference}` };
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
     const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-    if (ref.digest && ref.tag && ref.digest !== digest) {
-      return { image: raw, status: 'digest-mismatch', digest, platforms: [], detail: `tag ${ref.tag} resolves to ${digest}, not the pinned ${ref.digest}` };
+    let note = '';
+    if (ref.digest && ref.tag) {
+      const tagged = await fetchManifest(ref, ref.tag, fetchImpl);
+      if (tagged.status === 404) {
+        note = `tag ${ref.tag} no longer exists; the pinned digest still pulls`;
+      } else if (tagged.ok) {
+        const tagDigest = `sha256:${createHash('sha256').update(new Uint8Array(await tagged.arrayBuffer())).digest('hex')}`;
+        if (tagDigest !== ref.digest) note = `tag ${ref.tag} now resolves to ${tagDigest}; the pinned digest still pulls`;
+      }
     }
     const manifest = JSON.parse(new TextDecoder().decode(bytes)) as Manifest;
     let available = platformsOf(manifest);
@@ -142,6 +152,7 @@ export async function checkImage(raw: string, { fetch: fetchImpl = fetch, platfo
     if (available.length > 0 && missing.length > 0) {
       return { image: raw, status: 'platform-missing', digest, platforms: available, detail: `no manifest for ${missing.join(', ')}` };
     }
+    if (note) return { image: raw, status: 'tag-moved', digest, platforms: available, detail: note };
     return { image: raw, status: 'ok', digest, platforms: available, detail: available.length ? '' : 'platform not reported by registry' };
   } catch (error) {
     return { image: raw, status: 'error', platforms: [], detail: (error as Error).message };
@@ -188,14 +199,18 @@ export async function checkImages(images: string[], options: CheckOptions = {}):
 
 const STATUS_LABEL: Record<ImageStatus, string> = {
   ok: '✅ available',
+  'tag-moved': '⚠️ tag moved',
   missing: '❌ not found',
-  'digest-mismatch': '❌ digest mismatch',
   'platform-missing': '❌ platform missing',
-  error: '⚠️ check failed',
+  error: '❌ check failed',
 };
 
+export function isFailure(result: ImageResult): boolean {
+  return FAILING.has(result.status);
+}
+
 export function hasFailures(results: ImageResult[]): boolean {
-  return results.some(result => result.status !== 'ok');
+  return results.some(isFailure);
 }
 
 export function renderImageReport(results: ImageResult[], platforms: string[]): string {
@@ -204,7 +219,7 @@ export function renderImageReport(results: ImageResult[], platforms: string[]): 
     const detail = result.detail || result.platforms.join(', ');
     return `| \`${result.image}\` | ${STATUS_LABEL[result.status]} | ${detail} |`;
   });
-  const failures = results.filter(result => result.status !== 'ok').length;
+  const failures = results.filter(isFailure).length;
   const heading = failures === 0
     ? `All ${results.length} changed image${results.length === 1 ? '' : 's'} resolve for ${platforms.join(', ')}.`
     : `${failures} of ${results.length} changed image${results.length === 1 ? '' : 's'} failed verification.`;

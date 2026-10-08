@@ -54,9 +54,9 @@ test('parses references with registries, tags, digests and Docker Hub shorthands
   assert.throws(() => parseImage('ghcr.io/'), /Invalid image reference/);
 });
 
-test('verifies a pinned image through the bearer token flow and reports its platforms', async () => {
+test('verifies a tagged image through the bearer token flow and reports its platforms', async () => {
   const { fetch, calls } = registry({ '/v2/home-operations/radarr/manifests/6.4.4': manifestBody(index) });
-  const result = await checkImage(`ghcr.io/home-operations/radarr:6.4.4@${digestOf(index)}`, { fetch });
+  const result = await checkImage('ghcr.io/home-operations/radarr:6.4.4', { fetch });
   assert.equal(result.status, 'ok');
   assert.equal(result.digest, digestOf(index));
   assert.deepEqual(result.platforms, ['linux/amd64', 'linux/arm64']);
@@ -67,12 +67,36 @@ test('verifies a pinned image through the bearer token flow and reports its plat
   ]);
 });
 
-test('detects missing tags, digest drift and absent platforms', async () => {
+test('a pinned digest is verified itself; a moved tag is reported without failing', async () => {
+  const pinned = digestOf(index);
+  const retagged = JSON.stringify({ ...JSON.parse(index), annotations: { rebuilt: 'yes' } });
+  const { fetch, calls } = registry({
+    [`/v2/home-operations/radarr/manifests/${pinned}`]: manifestBody(index),
+    '/v2/home-operations/radarr/manifests/6.4.4': manifestBody(retagged),
+  });
+  const moved = await checkImage(`ghcr.io/home-operations/radarr:6.4.4@${pinned}`, { fetch });
+  assert.equal(moved.status, 'tag-moved');
+  assert.equal(moved.digest, pinned);
+  assert.deepEqual(moved.platforms, ['linux/amd64', 'linux/arm64']);
+  assert.match(moved.detail, /tag 6\.4\.4 now resolves to sha256:[0-9a-f]+; the pinned digest still pulls/);
+  assert.equal(hasFailures([moved]), false);
+  assert.ok(calls.some(call => call.endsWith(`/manifests/${pinned}`)));
+
+  const gone = await checkImage(`ghcr.io/home-operations/radarr:9.9.9@${pinned}`, { fetch });
+  assert.equal(gone.status, 'tag-moved');
+  assert.match(gone.detail, /tag 9\.9\.9 no longer exists/);
+  const current = await checkImage(`ghcr.io/home-operations/radarr:6.4.4@${digestOf(retagged)}`, {
+    fetch: registry({ [`/v2/home-operations/radarr/manifests/${digestOf(retagged)}`]: manifestBody(retagged), '/v2/home-operations/radarr/manifests/6.4.4': manifestBody(retagged) }).fetch,
+  });
+  assert.equal(current.status, 'ok');
+  assert.equal((await checkImage('ghcr.io/home-operations/radarr:6.4.4@sha256:0000', { fetch })).status, 'missing');
+});
+
+test('detects missing tags and absent platforms', async () => {
   const { fetch } = registry({ '/v2/home-operations/radarr/manifests/6.4.4': manifestBody(index) });
-  assert.equal((await checkImage('ghcr.io/home-operations/radarr:7.0.0', { fetch })).status, 'missing');
-  const drifted = await checkImage('ghcr.io/home-operations/radarr:6.4.4@sha256:0000', { fetch });
-  assert.equal(drifted.status, 'digest-mismatch');
-  assert.match(drifted.detail, /resolves to sha256:/);
+  const missing = await checkImage('ghcr.io/home-operations/radarr:7.0.0', { fetch });
+  assert.equal(missing.status, 'missing');
+  assert.match(missing.detail, /radarr:7\.0\.0 not found/);
   const armOnly = await checkImage('ghcr.io/home-operations/radarr:6.4.4', { fetch, platforms: ['linux/arm/v7'] });
   assert.equal(armOnly.status, 'platform-missing');
   assert.match(armOnly.detail, /linux\/arm\/v7/);

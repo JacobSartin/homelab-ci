@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { checkImages, hasFailures, renderImageReport } from './images.mts';
+import { checkImages, hasFailures, isFailure, renderImageReport } from './images.mts';
 import type { Core } from './types.mts';
 
 export interface CheckImagesDependencies {
@@ -44,9 +44,9 @@ export default async function run({
     core.info(`${result.status.padEnd(16)} ${result.image}${result.detail ? ` (${result.detail})` : ''}`);
   }
   core.setOutput('checked', String(results.length));
-  core.setOutput('failed', String(results.filter(result => result.status !== 'ok').length));
+  core.setOutput('failed', String(results.filter(isFailure).length));
   if (hasFailures(results)) {
-    const failed = results.filter(result => result.status !== 'ok').map(result => `${result.image}: ${result.detail}`);
+    const failed = results.filter(isFailure).map(result => `${result.image}: ${result.detail}`);
     throw new Error(`Image verification failed:\n${failed.join('\n')}`);
   }
 }
