@@ -19,15 +19,22 @@ interface Section {
   diff?: boolean;
 }
 
+export interface ReportOptions {
+  failed?: boolean;
+  assignee?: string;
+  limit?: number;
+}
+
 function readOptional(read: (file: string) => string, file: string | undefined): string {
   if (!file) return '';
   try { return read(file).trim(); } catch { return ''; }
 }
 
-export function buildReport(sections: Section[], runUrl: string, limit = LIMIT): string {
+export function buildReport(sections: Section[], runUrl: string, { failed = false, assignee = '', limit = LIMIT }: ReportOptions = {}): string {
   const linked = new Set<string>();
   const render = (): string => {
-    const parts = [MARKER, '## GitOps validation'];
+    const parts = [MARKER, failed ? '## ❌ GitOps validation failed' : '## ✅ GitOps validation'];
+    if (failed && assignee) parts.push(`@${assignee} this update needs attention; the failing checks are listed below.`);
     for (const section of sections) {
       if (!section.body) continue;
       if (section.diff) {
@@ -51,13 +58,15 @@ export function buildReport(sections: Section[], runUrl: string, limit = LIMIT):
 
 export default async function publishReport({ github, context, env = process.env, read = file => fs.readFileSync(file, 'utf8'), summary }: PublishDependencies): Promise<void> {
   const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+  const failed = env.FAILED === 'true';
+  const assignee = (env.ASSIGNEE ?? '').trim();
   const sections: Section[] = [
     { title: 'Render', body: readOptional(read, env.TEST_REPORT) },
     { title: 'Schemas', body: readOptional(read, env.SCHEMA_REPORT) },
     { title: 'Images', body: readOptional(read, env.IMAGE_REPORT) },
     { title: 'Rendered diff', body: readOptional(read, env.DIFF_FILE), diff: true },
   ];
-  const body = buildReport(sections, runUrl);
+  const body = buildReport(sections, runUrl, { failed, assignee });
   await summary?.(body.replace(MARKER, '').trim());
 
   if (context.eventName !== 'pull_request' || !context.issue.number) return;
@@ -69,5 +78,9 @@ export default async function publishReport({ github, context, env = process.env
     await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
   } else {
     await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+  }
+  // Editing a comment does not notify anyone; an assignment does.
+  if (failed && assignee) {
+    await github.rest.issues.addAssignees({ ...context.repo, issue_number: context.issue.number, assignees: [assignee] });
   }
 }

@@ -1,10 +1,16 @@
 name: Publish validation report
-description: Write the validation report to the job summary and keep a single pull request comment up to date
+description: Write the validation report to the job summary, keep a single pull request comment up to date, and assign the maintainer when validation failed
 
 inputs:
   github-token:
-    description: Token used to manage the pull request comment
+    description: Token used to manage the pull request comment and assignees
     required: true
+  failed:
+    description: Whether any validation job failed (true/false)
+    default: "false"
+  assignee:
+    description: GitHub user mentioned and assigned when validation failed; empty disables it
+    default: ""
   test-report:
     description: Markdown written by the flate action
     default: ""
@@ -25,6 +31,8 @@ runs:
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       env:
         PUBLISH_MODULE: ${{ github.action_path }}/../../src/publish-report.mts
+        FAILED: ${{ inputs.failed }}
+        ASSIGNEE: ${{ inputs.assignee }}
         TEST_REPORT: ${{ inputs.test-report }}
         SCHEMA_REPORT: ${{ inputs.schema-report }}
         IMAGE_REPORT: ${{ inputs.image-report }}

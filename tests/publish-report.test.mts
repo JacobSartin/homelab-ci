@@ -8,15 +8,16 @@ interface Scenario {
   files?: Record<string, string>;
   comments?: Comment[];
   eventName?: string;
+  env?: NodeJS.ProcessEnv;
 }
 
-async function publish({ files = {}, comments = [], eventName = 'pull_request' }: Scenario = {}) {
+async function publish({ files = {}, comments = [], eventName = 'pull_request', env = {} }: Scenario = {}) {
   const { issues, calls } = recordIssues();
   const summaries: string[] = [];
   await publishReport({
     github: { rest: { issues }, paginate: async () => comments },
     context: { repo: { owner: 'owner', repo: 'repo' }, issue: { number: 1 }, serverUrl: 'https://github.com', runId: 42, eventName },
-    env: { TEST_REPORT: 'test.md', SCHEMA_REPORT: 'schema.md', IMAGE_REPORT: 'images.md', DIFF_FILE: 'diff.md' },
+    env: { TEST_REPORT: 'test.md', SCHEMA_REPORT: 'schema.md', IMAGE_REPORT: 'images.md', DIFF_FILE: 'diff.md', ...env },
     read: file => {
       if (!(file in files)) throw new Error('File not found');
       return files[file]!;
@@ -28,10 +29,11 @@ async function publish({ files = {}, comments = [], eventName = 'pull_request' }
 
 test('creates one report comment, updates it on later runs and mirrors it to the job summary', async () => {
   const files = { 'test.md': '✅ Flate reconciled the repository: 5 passed.', 'images.md': 'No container images changed.', 'diff.md': '@@ a @@\n+ change' };
-  const { calls: [created], summaries } = await publish({ files });
-  assert.equal(created!.name, 'createComment');
-  const body = created!.args.body as string;
+  const { calls, summaries } = await publish({ files });
+  assert.deepEqual(calls.map(call => call.name), ['createComment']);
+  const body = calls[0]!.args.body as string;
   assert.ok(body.startsWith(MARKER));
+  assert.match(body, /## ✅ GitOps validation\n/);
   assert.match(body, /### Render\n\n✅ Flate/);
   assert.match(body, /### Images\n\nNo container images changed\./);
   assert.doesNotMatch(body, /### Schemas/);
@@ -45,8 +47,23 @@ test('creates one report comment, updates it on later runs and mirrors it to the
   assert.equal(updated!.args.comment_id, 7);
 });
 
+test('a failed validation mentions and assigns the configured user', async () => {
+  const files = { 'test.md': '❌ Flate reconciled the repository: 1 failed.' };
+  const { calls } = await publish({ files, env: { FAILED: 'true', ASSIGNEE: 'owner' } });
+  assert.deepEqual(calls.map(call => call.name), ['createComment', 'addAssignees']);
+  const body = calls[0]!.args.body as string;
+  assert.match(body, /## ❌ GitOps validation failed\n\n@owner this update needs attention/);
+  assert.deepEqual(calls[1]!.args, { owner: 'owner', repo: 'repo', issue_number: 1, assignees: ['owner'] });
+
+  const unassigned = await publish({ files, env: { FAILED: 'true' } });
+  assert.deepEqual(unassigned.calls.map(call => call.name), ['createComment']);
+  assert.doesNotMatch(unassigned.calls[0]!.args.body as string, /needs attention/);
+  const passed = await publish({ files, env: { FAILED: 'false', ASSIGNEE: 'owner' } });
+  assert.deepEqual(passed.calls.map(call => call.name), ['createComment']);
+});
+
 test('outside pull requests the report only goes to the job summary', async () => {
-  const { calls, summaries } = await publish({ files: { 'test.md': 'ok' }, eventName: 'workflow_dispatch' });
+  const { calls, summaries } = await publish({ files: { 'test.md': 'ok' }, eventName: 'workflow_dispatch', env: { FAILED: 'true', ASSIGNEE: 'owner' } });
   assert.deepEqual(calls, []);
   assert.equal(summaries.length, 1);
 });

@@ -60,8 +60,10 @@ jobs:
     uses: ./.github/workflows/validate.yaml
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     with:
       path: fixtures/cluster
+      assignee: JacobSartin
       substitutions: |-
         BASE_DOMAIN=example.invalid

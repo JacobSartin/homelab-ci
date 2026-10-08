@@ -14,7 +14,7 @@ everywhere.
 | Render | [Flate](https://github.com/home-operations/flate) reconciles the whole repository offline: every Kustomization and HelmRelease renders, including Helm charts and `valuesFrom` ConfigMaps. Failed, blocked, or unexpectedly skipped resources fail the job. The diff against the base branch is rendered and classified. |
 | Schemas | Kubeconform validates the rendered manifests (Helm output included) against upstream Kubernetes and CRD schemas. |
 | Images | Runs when the diff introduces container images. Each one is checked against its registry: the tag exists, a pinned digest still matches the tag, and the image provides the required platforms. |
-| Report | One pull request comment with the render summary, schema result, image table, warnings and the rendered diff. |
+| Report | One pull request comment with the render summary, schema result, image table, warnings and the rendered diff. When a check failed, the comment leads with a mention of `assignee` and assigns them, so the failure notifies someone. |
 | GitOps validation | The single status Renovate waits for before merging. |
 
 A Renovate image update therefore gets a rendered diff showing the new image
@@ -34,9 +34,11 @@ jobs:
     uses: JacobSartin/homelab-ci/.github/workflows/validate.yaml@main
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     with:
       runner: actions-runner
+      assignee: JacobSartin
       api-versions: monitoring.coreos.com/v1
       allowed-skips: |-
         flux-system/media-cluster
@@ -61,6 +63,8 @@ Inputs:
 - `kubeconform-skip`: kinds (or `group/version/kind`) without usable schemas.
 - `platforms`: platforms every changed image must provide (default
   `linux/amd64`).
+- `assignee`: user mentioned and assigned on the pull request when validation
+  fails. Needs `issues: write` from the caller.
 
 ## Running checks per kind of change
 

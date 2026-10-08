@@ -35,6 +35,10 @@ on:
         description: Platforms every changed container image must provide
         type: string
         default: linux/amd64
+      assignee:
+        description: GitHub user mentioned and assigned on the pull request when validation fails; empty disables it
+        type: string
+        default: ""
     outputs:
       images-changed:
         description: Whether the change introduces container images (true/false)
@@ -194,6 +198,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
       - name: Checkout CI tooling
@@ -214,6 +219,8 @@ jobs:
         uses: ./homelab-ci/actions/publish-report
         with:
           github-token: ${{ github.token }}
+          failed: ${{ contains(needs.*.result, 'failure') }}
+          assignee: ${{ inputs.assignee }}
           test-report: ${{ runner.temp }}/reports/gitops-render/test-report.md
           schema-report: ${{ runner.temp }}/reports/gitops-schema-report/schema-report.md
           image-report: ${{ runner.temp }}/reports/gitops-image-report/image-report.md

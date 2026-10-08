@@ -10,6 +10,7 @@ type Request<Route extends keyof Endpoints> = (
 ) => Promise<unknown>;
 
 export interface IssueMethods {
+  addAssignees: Request<'POST /repos/{owner}/{repo}/issues/{issue_number}/assignees'>;
   createComment: Request<'POST /repos/{owner}/{repo}/issues/{issue_number}/comments'>;
   updateComment: Request<'PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}'>;
   deleteComment: Request<'DELETE /repos/{owner}/{repo}/issues/comments/{comment_id}'>;
@@ -18,7 +19,7 @@ export interface IssueMethods {
 
 export interface CommentClient {
   rest: {
-    issues: Pick<IssueMethods, 'createComment' | 'updateComment' | 'deleteComment' | 'listComments'>;
+    issues: IssueMethods;
   };
   paginate(
     method: IssueMethods['listComments'],
