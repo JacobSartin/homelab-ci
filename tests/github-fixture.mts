@@ -15,9 +15,6 @@ export function recordIssues(): { issues: IssueMethods; calls: IssueCall[] } {
   return {
     calls,
     issues: {
-      removeLabel: record('removeLabel'),
-      addLabels: record('addLabels'),
-      addAssignees: record('addAssignees'),
       createComment: record('createComment'),
       updateComment: record('updateComment'),
       deleteComment: record('deleteComment'),

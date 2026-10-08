@@ -35,6 +35,25 @@ on:
         description: Platforms every changed container image must provide
         type: string
         default: linux/amd64
+    outputs:
+      images-changed:
+        description: Whether the change introduces container images (true/false)
+        value: ${{ jobs.render.outputs.images-changed }}
+      helmreleases-changed:
+        description: Whether any HelmRelease changed (true/false)
+        value: ${{ jobs.render.outputs.helmreleases-changed }}
+      kustomizations-changed:
+        description: Whether any Flux Kustomization changed (true/false)
+        value: ${{ jobs.render.outputs.kustomizations-changed }}
+      changed-kinds:
+        description: Comma-separated kinds of rendered objects that changed
+        value: ${{ jobs.render.outputs.changed-kinds }}
+      changed-helmreleases:
+        description: Comma-separated namespace/name of changed HelmReleases
+        value: ${{ jobs.render.outputs.changed-helmreleases }}
+      changed-kustomizations:
+        description: Comma-separated namespace/name of changed Kustomizations
+        value: ${{ jobs.render.outputs.changed-kustomizations }}
 
 permissions:
   contents: read
@@ -46,6 +65,12 @@ jobs:
     timeout-minutes: 30
     outputs:
       passed: ${{ steps.render.outputs.passed }}
+      images-changed: ${{ steps.render.outputs.images-changed }}
+      helmreleases-changed: ${{ steps.render.outputs.helmreleases-changed }}
+      kustomizations-changed: ${{ steps.render.outputs.kustomizations-changed }}
+      changed-kinds: ${{ steps.render.outputs.changed-kinds }}
+      changed-helmreleases: ${{ steps.render.outputs.changed-helmreleases }}
+      changed-kustomizations: ${{ steps.render.outputs.changed-kustomizations }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -122,9 +147,12 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
+  # Runs only when the rendered diff introduces images: the classification
+  # outputs of the render job are the hook for kind-specific checks.
   images:
     name: Images
     needs: render
+    if: needs.render.outputs.images-changed == 'true'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     steps:
@@ -203,14 +231,17 @@ jobs:
           RENDER_RESULT: ${{ needs.render.result }}
           SCHEMA_RESULT: ${{ needs.schema.result }}
           IMAGES_RESULT: ${{ needs.images.result }}
+          IMAGES_EXPECTED: ${{ needs.render.outputs.images-changed == 'true' && 'success' || 'skipped' }}
         shell: bash
         run: |
           failed=0
-          for check in RENDER SCHEMA IMAGES; do
-            result="${check}_RESULT"
-            if [[ "${!result}" != success ]]; then
-              echo "::error::${check,,} did not succeed: ${!result}"
+          check() {
+            if [[ "$2" != "$3" ]]; then
+              echo "::error::$1 expected $3, got $2"
               failed=1
             fi
-          done
+          }
+          check render "$RENDER_RESULT" success
+          check schemas "$SCHEMA_RESULT" success
+          check images "$IMAGES_RESULT" "$IMAGES_EXPECTED"
           exit "$failed"

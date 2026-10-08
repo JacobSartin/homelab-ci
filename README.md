@@ -1,8 +1,8 @@
 # homelab-ci
 
 Shared GitHub Actions for the homelab GitOps repositories (`cluster`,
-`media-cluster`, and any future Flux repository). Consumers call two reusable
-workflows; everything else lives here so a change is tested once and picked up
+`media-cluster`, and any future Flux repository). Consumers call one reusable
+workflow; everything else lives here so a change is tested once and picked up
 everywhere.
 
 ## What the validation checks
@@ -11,23 +11,17 @@ everywhere.
 
 | Job | What it proves |
 | --- | --- |
-| Render | [Flate](https://github.com/home-operations/flate) reconciles the whole repository offline: every Kustomization and HelmRelease renders, including Helm charts and `valuesFrom` ConfigMaps. Failed, blocked, or unexpectedly skipped resources fail the job. The diff against the base branch is rendered too. |
+| Render | [Flate](https://github.com/home-operations/flate) reconciles the whole repository offline: every Kustomization and HelmRelease renders, including Helm charts and `valuesFrom` ConfigMaps. Failed, blocked, or unexpectedly skipped resources fail the job. The diff against the base branch is rendered and classified. |
 | Schemas | Kubeconform validates the rendered manifests (Helm output included) against upstream Kubernetes and CRD schemas. |
-| Images | Every container image the pull request introduces is checked against its registry: the tag exists, a pinned digest still matches the tag, and the image provides the required platforms. |
+| Images | Runs when the diff introduces container images. Each one is checked against its registry: the tag exists, a pinned digest still matches the tag, and the image provides the required platforms. |
 | Report | One pull request comment with the render summary, schema result, image table, warnings and the rendered diff. |
-| GitOps validation | The single status Renovate automerge waits for. |
+| GitOps validation | The single status Renovate waits for before merging. |
 
-A Renovate image update therefore gets a rendered diff showing the new image,
-a registry lookup proving it can be pulled, and a schema check, instead of
-skipping validation.
+A Renovate image update therefore gets a rendered diff showing the new image
+and a registry lookup proving it can be pulled; a chart update gets the full
+rendered diff of the chart and a schema check of its output.
 
-`.github/workflows/automerge.yaml` merges validated Renovate pull requests one
-at a time, holding the queue after each merge so Flux can roll it out, and
-assigns the maintainer when a pull request needs attention. With a GitHub App
-token it can merge pull requests that change workflow files, which the default
-workflow token cannot.
-
-## Consuming the workflows
+## Consuming the workflow
 
 ```yaml
 # .github/workflows/pr-validate.yaml
@@ -68,43 +62,36 @@ Inputs:
 - `platforms`: platforms every changed image must provide (default
   `linux/amd64`).
 
-Automerge is triggered from the validation workflow run:
+## Running checks per kind of change
 
-```yaml
-# .github/workflows/automerge.yaml
-on:
-  workflow_run:
-    workflows: ["Pull Request: Validate"]
-    types: [completed]
-concurrency:
-  group: renovate-automerge
-  queue: max
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-jobs:
-  automerge:
-    if: github.event.workflow_run.event == 'pull_request'
-    uses: JacobSartin/homelab-ci/.github/workflows/automerge.yaml@main
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    with:
-      runner: actions-runner
-    secrets:
-      app-id: ${{ secrets.BOT_APP_ID }}
-      app-private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
-```
+The render job classifies the rendered diff and exposes the result as workflow
+outputs, so checks can be scoped to what actually changed without relying on
+Renovate labels or file paths:
 
-The secrets are optional. Without them the workflow token merges, and pull
-requests touching `.github/workflows/` end with the `workflow_permission`
-outcome and a notification instead of a silent retry loop. The GitHub App
-needs `contents: write`, `pull_requests: write` and `workflows: write`.
+| Output | Meaning |
+| --- | --- |
+| `images-changed` | `true` when the diff introduces container images |
+| `helmreleases-changed` | `true` when a HelmRelease object changed (chart version, values, source) |
+| `kustomizations-changed` | `true` when a Flux Kustomization object changed |
+| `changed-kinds` | comma-separated kinds of rendered objects that changed |
+| `changed-helmreleases`, `changed-kustomizations` | comma-separated `namespace/name` lists |
 
-Keep the queued concurrency group in the caller: GitHub applies a called
-workflow's jobs under the caller's concurrency settings.
+The `Images` job is the in-tree example: it runs only when `images-changed` is
+`true`. Add a kind-specific check either here, as a job in `validate.yaml`
+conditioned on these outputs (then make the `GitOps validation` job expect it),
+or in a consumer as a job that `needs: validate` and reads
+`needs.validate.outputs.<name>`. The full classification, including each
+changed object and the fields that changed, is in `classification.json` inside
+the `gitops-render` artifact.
+
+## Automerge
+
+Renovate merges its own pull requests once the `GitOps validation` check is
+green; the policy lives in `cluster/.github/renovate/merge_policy.json5` and
+is inherited by every consumer. Renovate's App token may merge workflow-file
+changes, and `rebaseWhen: behind-base-branch` rebases and revalidates a pull
+request that fell behind before merging it, so two updates to the same file no
+longer block each other. No automerge workflow runs in the consumers.
 
 ## Modelling cross-repository dependencies
 
@@ -139,9 +126,9 @@ pick the change up from `main`.
 
 Layout:
 
-- `.github/workflows/validate.yaml`, `automerge.yaml`: reusable workflows. They
-  check out this repository at `job.workflow_sha`, so the actions always match
-  the workflow revision a consumer referenced.
+- `.github/workflows/validate.yaml`: the reusable workflow. It checks out this
+  repository at `job.workflow_sha`, so the actions always match the workflow
+  revision a consumer referenced.
 - `actions/*`: composite actions. Shell does the rendering; TypeScript in
   `src/` makes the decisions and talks to GitHub through `actions/github-script`,
   which runs `.mts` files without a build step.

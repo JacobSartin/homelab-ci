@@ -31,6 +31,24 @@ outputs:
   output-dir:
     description: Directory holding the render results
     value: ${{ inputs.output-dir }}
+  images-changed:
+    description: Whether the change introduces container images (true/false)
+    value: ${{ steps.evaluate.outputs.images-changed }}
+  helmreleases-changed:
+    description: Whether any HelmRelease object changed (chart version, values, source)
+    value: ${{ steps.evaluate.outputs.helmreleases-changed }}
+  kustomizations-changed:
+    description: Whether any Flux Kustomization object changed
+    value: ${{ steps.evaluate.outputs.kustomizations-changed }}
+  changed-kinds:
+    description: Comma-separated kinds of rendered objects that changed
+    value: ${{ steps.evaluate.outputs.changed-kinds }}
+  changed-helmreleases:
+    description: Comma-separated namespace/name of changed HelmReleases
+    value: ${{ steps.evaluate.outputs.changed-helmreleases }}
+  changed-kustomizations:
+    description: Comma-separated namespace/name of changed Kustomizations
+    value: ${{ steps.evaluate.outputs.changed-kustomizations }}
 
 runs:
   using: composite
@@ -61,6 +79,9 @@ runs:
         EVALUATE_MODULE: ${{ github.action_path }}/../../src/evaluate-render.mts
         TEST_OUTPUT_FILE: ${{ inputs.output-dir }}/test.txt
         REPORT_FILE: ${{ inputs.output-dir }}/test-report.md
+        DIFF_FILE: ${{ inputs.output-dir }}/diff.md
+        IMAGES_FILE: ${{ inputs.output-dir }}/images.json
+        CLASSIFICATION_FILE: ${{ inputs.output-dir }}/classification.json
         ALLOWED_SKIPS: ${{ inputs.allowed-skips }}
       with:
         script: |
