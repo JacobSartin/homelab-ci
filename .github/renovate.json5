@@ -13,13 +13,19 @@
       matchPackageNames: ["home-operations/flate"],
       groupName: "flate",
     },
+    {
+      description: "Hold the CLI pins in the actions for three days, like other CI inputs (see merge_policy.json5)",
+      matchPackageNames: ["home-operations/flate", "yannh/kubeconform"],
+      minimumReleaseAge: "3 days",
+    },
   ],
   customManagers: [
     {
       customType: "regex",
       description: "Update the Flate CLI default in the render action",
-      managerFilePatterns: ["/^actions/flate/action\.yaml$/"],
-      matchStrings: ["flate-version:\n\s+description: .*\n\s+default: (?<currentValue>\d+\.\d+\.\d+)"],
+      // JSON5 drops a lone backslash before a letter; regex escapes need two.
+      managerFilePatterns: ["/^actions/flate/action\\.yaml$/"],
+      matchStrings: ["flate-version:\\n\\s+description: .*\\n\\s+default: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       depNameTemplate: "home-operations/flate",
       datasourceTemplate: "github-releases",
       extractVersionTemplate: "^v?(?<version>.*)$",
@@ -27,8 +33,8 @@
     {
       customType: "regex",
       description: "Update the Kubeconform default in the schema action",
-      managerFilePatterns: ["/^actions/schema/action\.yaml$/"],
-      matchStrings: ["kubeconform-version:\n\s+description: .*\n\s+default: (?<currentValue>\d+\.\d+\.\d+)"],
+      managerFilePatterns: ["/^actions/schema/action\\.yaml$/"],
+      matchStrings: ["kubeconform-version:\\n\\s+description: .*\\n\\s+default: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       depNameTemplate: "yannh/kubeconform",
       datasourceTemplate: "github-releases",
       extractVersionTemplate: "^v?(?<version>.*)$",

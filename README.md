@@ -93,9 +93,11 @@ the `gitops-render` artifact.
 Renovate merges its own pull requests once the `GitOps validation` check is
 green; the policy lives in `cluster/.github/renovate/merge_policy.json5` and
 is inherited by every consumer. Renovate's App token may merge workflow-file
-changes, and `rebaseWhen: behind-base-branch` rebases and revalidates a pull
-request that fell behind before merging it, so two updates to the same file no
-longer block each other. No automerge workflow runs in the consumers.
+changes. Pull requests rebase only on a conflict (`rebaseWhen: conflicted`), so
+frequent pushes to `main` do not restart validation forever. Third-party
+actions are SHA-pinned, and actions, mise tools, npm packages and the Flate
+and Kubeconform pins wait three days after release before they automerge. No
+automerge workflow runs in the consumers.
 
 ## Modelling cross-repository dependencies
 
