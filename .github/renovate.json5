@@ -2,7 +2,8 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: [
     "config:recommended",
-    "github>JacobSartin/cluster//.github/renovate/merge_policy.json5",
+    "github>JacobSartin/cluster//.github/renovate/base/automerge.json5",
+    "github>JacobSartin/cluster//.github/renovate/base/ci-inputs.json5",
   ],
   automerge: false,
   timezone: "America/Chicago",
@@ -14,7 +15,7 @@
       groupName: "flate",
     },
     {
-      description: "Hold the CLI pins in the actions for three days, like other CI inputs (see merge_policy.json5)",
+      description: "Hold the CLI pins in the actions for three days, like other CI inputs (see base/ci-inputs.json5)",
       matchPackageNames: ["home-operations/flate", "yannh/kubeconform"],
       minimumReleaseAge: "3 days",
     },
