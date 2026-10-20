@@ -3,7 +3,8 @@ name: GitOps Validation
 
 # Reusable validation for Flux repositories: render everything offline with
 # Flate, schema-check the rendered manifests, verify changed container images
-# against their registries, and publish one report on the pull request.
+# against their registries, check that secrets are encrypted, and publish one
+# report on the pull request.
 on:
   workflow_call:
     inputs:
@@ -190,6 +191,31 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
+  secrets:
+    name: Secrets
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: repo
+          persist-credentials: false
+
+      - name: Checkout CI tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: homelab-ci
+          persist-credentials: false
+
+      - name: Check secrets
+        uses: ./homelab-ci/actions/secrets
+        with:
+          working-directory: repo
+
   report:
     name: Report
     needs: [render, schema, images]
@@ -228,7 +254,7 @@ jobs:
 
   result:
     name: GitOps validation
-    needs: [render, schema, images]
+    needs: [render, schema, images, secrets]
     if: ${{ !cancelled() }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
@@ -238,6 +264,7 @@ jobs:
           RENDER_RESULT: ${{ needs.render.result }}
           SCHEMA_RESULT: ${{ needs.schema.result }}
           IMAGES_RESULT: ${{ needs.images.result }}
+          SECRETS_RESULT: ${{ needs.secrets.result }}
           IMAGES_EXPECTED: ${{ needs.render.outputs.images-changed == 'true' && 'success' || 'skipped' }}
         shell: bash
         run: |
@@ -251,4 +278,5 @@ jobs:
           check render "$RENDER_RESULT" success
           check schemas "$SCHEMA_RESULT" success
           check images "$IMAGES_RESULT" "$IMAGES_EXPECTED"
+          check secrets "$SECRETS_RESULT" success
           exit "$failed"

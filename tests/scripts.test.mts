@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
 const renderScript = fs.readFileSync(path.join(import.meta.dirname, '../actions/flate/render.sh'), 'utf8');
 const validateScript = fs.readFileSync(path.join(import.meta.dirname, '../actions/schema/validate.sh'), 'utf8');
+const secretsScript = fs.readFileSync(path.join(import.meta.dirname, '../actions/secrets/check.sh'), 'utf8');
 
 function run(script: string, stub: string, env: Record<string, string>, cwd: string): { status: number; output: string } {
   try {
@@ -161,5 +162,51 @@ test('schema script reports invalid resources and rejects malformed substitution
     const malformed = run(validateScript, kubeconformStub, { WORK: dir, RENDERED_FILE: rendered, REPORT_FILE: report, SCHEMA_LOCATION: 'x', SUBSTITUTIONS: 'bad name=1' }, dir);
     assert.notEqual(malformed.status, 0);
     assert.match(malformed.output, /Invalid substitution name/);
+  });
+});
+
+// A file counts as encrypted when it carries a sops: block; gitleaks flags LEAK.
+const secretsStub = `
+sops() { echo "$2" >> "$WORK/sops-calls.txt"; if grep -q '^sops:' "$2"; then echo '{"encrypted":true}'; else echo '{"encrypted":false}'; fi; }
+gitleaks() { ! git grep -q LEAK; }
+`;
+
+function secretsRepo(dir: string, files: Record<string, string>): void {
+  for (const [name, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), content);
+  }
+  execFileSync('git', ['init', '-q'], { cwd: dir });
+  execFileSync('git', ['add', '.'], { cwd: dir });
+}
+
+test('secrets script checks every file a creation rule or the .sops name selects', () => {
+  withTempDir('secrets-', dir => {
+    secretsRepo(dir, {
+      '.sops.yaml': 'creation_rules:\n  - path_regex: ^apps/.*secret\.ya?ml$\n',
+      'apps/a/secret.yaml': 'data: x\nsops: {}\n',
+      'apps/a/values.yaml': 'plain: true\n',
+      'other/key.sops.json': '{}\nsops:\n',
+      'tenant/.sops.yaml': "creation_rules:\n  - path_regex: '^env\.yaml$'\n",
+      'tenant/env.yaml': 'sops: {}\n',
+    });
+    const { status, output } = run(secretsScript, secretsStub, { WORK: dir }, dir);
+    assert.equal(status, 0, output);
+    assert.match(output, /Checked 3 SOPS file/);
+    assert.equal(fs.readFileSync(path.join(dir, 'sops-calls.txt'), 'utf8'), 'apps/a/secret.yaml\nother/key.sops.json\ntenant/env.yaml\n');
+  });
+});
+
+test('secrets script fails on plaintext SOPS files and gitleaks findings', () => {
+  withTempDir('secrets-', dir => {
+    secretsRepo(dir, {
+      '.sops.yaml': 'creation_rules:\n  - path_regex: secret\.yaml$\n',
+      'secret.yaml': 'data: plaintext\n',
+      'values.yaml': 'token: LEAK\n',
+    });
+    const { status, output } = run(secretsScript, secretsStub, { WORK: dir }, dir);
+    assert.equal(status, 1);
+    assert.match(output, /::error file=secret\.yaml::Not SOPS-encrypted/);
+    assert.match(output, /::error::gitleaks found possible secrets/);
   });
 });
