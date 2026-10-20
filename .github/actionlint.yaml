@@ -1,7 +1,6 @@
 self-hosted-runner:
   labels:
-    - actions-runner
-    - actions-runner-media
+    - actions-runner-private
 
 paths:
   .github/workflows/*.yaml:

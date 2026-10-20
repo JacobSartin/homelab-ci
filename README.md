@@ -1,7 +1,7 @@
 # homelab-ci
 
 Shared GitHub Actions for the homelab GitOps repositories (`cluster`,
-`media-cluster`, and any future Flux repository). Consumers call one reusable
+`private-cluster`, and any future Flux repository). Consumers call one reusable
 workflow; everything else lives here so a change is tested once and picked up
 everywhere.
 
@@ -41,7 +41,7 @@ jobs:
       assignee: JacobSartin
       api-versions: monitoring.coreos.com/v1
       allowed-skips: |-
-        flux-system/media-cluster
+        private-system/private-cluster
       substitutions: |-
         BASE_DOMAIN=example.invalid
       kubeconform-skip: |-
