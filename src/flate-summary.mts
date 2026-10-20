@@ -84,8 +84,8 @@ export function parseFlateTest(text: string): Parsed {
 }
 
 export interface EvaluateOptions {
-  // Entries such as `Kustomization flux-system/media-cluster` or
-  // `flux-system/media-cluster` that may stay skipped: sources living in other
+  // Entries such as `Kustomization private-system/private-cluster` or
+  // `private-system/private-cluster` that may stay skipped: sources living in other
   // repositories that only the live cluster can fetch.
   allowedSkips?: string[];
 }

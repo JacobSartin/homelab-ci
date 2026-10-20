@@ -6,10 +6,10 @@ import runEvaluate from '../src/evaluate-render.mts';
 // Captured from `flate test all` runs against the real repositories.
 const healthy = `
   ✓  Kustomization   flux-system/actions-runner-controller
-  ‒  Kustomization   flux-system/media-cluster  source GitRepository/flux-system/media-cluster skipped: GitRepository flux-system/media-cluster: secret flux-system/media-cluster-deploy-key missing 'identity' for SSH auth
+  ‒  Kustomization   private-system/private-cluster  source GitRepository/private-system/private-cluster skipped: GitRepository private-system/private-cluster: secret private-system/private-cluster-deploy-key missing 'identity' for SSH auth
   ✓  HelmRelease     kube-system/cilium
   ✓  HelmRelease     jenkins/jenkins
-  ‒  GitRepository   flux-system/media-cluster  GitRepository flux-system/media-cluster: secret flux-system/media-cluster-deploy-key missing 'identity' for SSH auth
+  ‒  GitRepository   private-system/private-cluster  GitRepository private-system/private-cluster: secret private-system/private-cluster-deploy-key missing 'identity' for SSH auth
   ✓  GitRepository   flux-system/cluster
 
   ⚠ warnings (2)
@@ -36,8 +36,8 @@ test('parses resource lines, warnings and the summary', () => {
   assert.deepEqual(parsed.summary, { passed: 167, skipped: 4, failed: 0, blocked: 0 });
   assert.equal(parsed.entries.length, 6);
   assert.deepEqual(parsed.entries[1], {
-    status: 'skip', kind: 'Kustomization', name: 'flux-system/media-cluster',
-    message: "source GitRepository/flux-system/media-cluster skipped: GitRepository flux-system/media-cluster: secret flux-system/media-cluster-deploy-key missing 'identity' for SSH auth",
+    status: 'skip', kind: 'Kustomization', name: 'private-system/private-cluster',
+    message: "source GitRepository/private-system/private-cluster skipped: GitRepository private-system/private-cluster: secret private-system/private-cluster-deploy-key missing 'identity' for SSH auth",
   });
   assert.deepEqual(parsed.warnings, [
     'HelmRelease cloudflared/cloudflared: values not used by the chart resources',
@@ -51,9 +51,9 @@ test('skipped sources must be allowed explicitly; suspended stand-ins are always
   const strict = evaluate(parsed);
   assert.equal(strict.ok, false);
   assert.equal(strict.problems.length, 2);
-  assert.match(strict.problems[0]!, /Kustomization flux-system\/media-cluster was skipped/);
-  assert.equal(evaluate(parsed, { allowedSkips: ['flux-system/media-cluster'] }).ok, true);
-  assert.equal(evaluate(parsed, { allowedSkips: ['Kustomization flux-system/media-cluster', 'GitRepository flux-system/media-cluster'] }).ok, true);
+  assert.match(strict.problems[0]!, /Kustomization private-system\/private-cluster was skipped/);
+  assert.equal(evaluate(parsed, { allowedSkips: ['private-system/private-cluster'] }).ok, true);
+  assert.equal(evaluate(parsed, { allowedSkips: ['Kustomization private-system/private-cluster', 'GitRepository private-system/private-cluster'] }).ok, true);
   const stubbed = evaluate(parseFlateTest(blocked));
   assert.ok(!stubbed.problems.some(problem => problem.includes('grafana-operator')));
 });
@@ -72,7 +72,7 @@ test('failed and blocked resources, missing summaries and empty renders are prob
 
 test('report lists the summary, problems, skips and warnings', () => {
   const parsed = parseFlateTest(healthy);
-  const report = renderTestReport(parsed, evaluate(parsed, { allowedSkips: ['flux-system/media-cluster'] }));
+  const report = renderTestReport(parsed, evaluate(parsed, { allowedSkips: ['private-system/private-cluster'] }));
   assert.match(report, /^✅ Flate reconciled the repository: 167 passed, 4 skipped\./);
   assert.match(report, /<summary>Skipped resources<\/summary>/);
   assert.match(report, /<summary>Flate warnings<\/summary>/);
@@ -87,7 +87,7 @@ test('evaluate-render entry point writes the report and fails the step on proble
   const warnings: string[] = [];
   const deps = {
     core: { setOutput: (name: string, value: string) => { outputs[name] = value; }, info: () => {}, warning: (message: string) => { warnings.push(message); } },
-    env: { TEST_OUTPUT_FILE: 'test.txt', REPORT_FILE: 'report.md', ALLOWED_SKIPS: 'flux-system/media-cluster' },
+    env: { TEST_OUTPUT_FILE: 'test.txt', REPORT_FILE: 'report.md', ALLOWED_SKIPS: 'private-system/private-cluster' },
     read: (file: string) => files[file]!,
     write: (file: string, content: string) => { files[file] = content; },
   };
@@ -96,6 +96,6 @@ test('evaluate-render entry point writes the report and fails the step on proble
   assert.equal(outputs.ok, 'true');
   assert.equal(warnings.length, 2);
   assert.match(files['report.md']!, /167 passed/);
-  await assert.rejects(runEvaluate({ ...deps, env: { ...deps.env, ALLOWED_SKIPS: '' } }), /Flate validation failed:[\s\S]*media-cluster/);
+  await assert.rejects(runEvaluate({ ...deps, env: { ...deps.env, ALLOWED_SKIPS: '' } }), /Flate validation failed:[\s\S]*private-cluster/);
   await assert.rejects(runEvaluate({ ...deps, env: {} }), /TEST_OUTPUT_FILE and REPORT_FILE/);
 });
