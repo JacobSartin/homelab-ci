@@ -30,7 +30,7 @@ jobs:
         uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # Pin the CLI too: the action otherwise downloads the latest release.
-          version: 2026.10.17
+          version: 2026.10.18
           cache: true
           cache_key_prefix: homelab-ci-tools-v1
           tool_versions: |
