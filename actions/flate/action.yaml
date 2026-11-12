@@ -22,7 +22,7 @@ inputs:
     default: ${{ runner.temp }}/render
   flate-version:
     description: Flate release to install
-    default: 0.7.1
+    default: 0.7.3
 
 outputs:
   passed:
@@ -54,7 +54,7 @@ runs:
   using: composite
   steps:
     - name: Install Flate
-      uses: home-operations/flate/action@43b92e26b196c6ca7eb1933b5b2c9074ff0ad1b7 # v0.7.1
+      uses: home-operations/flate/action@bbb6ebc344da051752dbdb1b413860ceffcfb63d # v0.7.3
       with:
         version: ${{ inputs.flate-version }}
         base: ""
