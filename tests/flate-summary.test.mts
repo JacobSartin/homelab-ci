@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluate, parseFlateTest, renderTestReport, summarizeWarnings } from '../src/flate-summary.mts';
+import { evaluate, parseFlateTest, renderTestReport, summarizeWarnings, unexpectedWarnings } from '../src/flate-summary.mts';
 import runEvaluate from '../src/evaluate-render.mts';
 
 // Captured from `flate test all` runs against the real repositories.
@@ -63,6 +63,15 @@ const stderrWarnings = `
     [SourceCredentialsUnavailable] GitRepository flux-system/private-source: secret flux-system/private-source-deploy-key not found
 `;
 
+// Flate 0.7.3, from the fixture while a suspended stand-in owned its directory.
+const orphanWarning = `
+
+  ⚠ warnings (2)
+    [RenderPersistenceDisabled] render persistence is disabled: the binary has no stamped build identity; source caching remains available
+    [OrphanedResource] Kustomization flux-system/echo: resource orphaned
+      fixtures/cluster/flux/apps.yaml, dependencies failed: Kustomization.kustomize.toolkit.fluxcd.io/flux-system/external-dependency: declaration not emitted
+`;
+
 test('parses resource lines, warnings and the summary', () => {
   const parsed = parseFlateTest(healthy);
   assert.deepEqual(parsed.summary, { passed: 167, skipped: 4, failed: 0, blocked: 0 });
@@ -96,6 +105,10 @@ test('parses the stderr warnings block and counts it by category', () => {
   assert.equal(warnings[1], '[SOPSUnreadable] Secret authelia/authelia-secret: SOPS-encrypted data is unreadable; supply dummy values for references; re-encryption cannot be compared clients_rustfs_secret, jwks_rsa_key.pem');
   assert.equal(summarizeWarnings(warnings), '2 SOPSUnreadable, 1 RenderPersistenceDisabled, 1 SourceCredentialsUnavailable');
   assert.equal(summarizeWarnings(parseFlateTest(healthy).warnings), '2 uncategorised');
+  // The categories every CI render raises are dropped; anything else stays.
+  assert.deepEqual(unexpectedWarnings(warnings), []);
+  assert.equal(unexpectedWarnings(parseFlateTest(healthy).warnings).length, 2);
+  assert.match(unexpectedWarnings(parseFlateTest(orphanWarning).warnings).join('\n'), /^\[OrphanedResource\] [^\n]*$/);
   // Anything shallower than the block ends it: other stderr output, or the
   // result lines when both streams are read together.
   assert.equal(parseFlateTest(`${stderrWarnings}Error: boom\n`).warnings.length, 4);
@@ -157,14 +170,28 @@ test('evaluate-render entry point writes the report and fails the step on proble
   assert.equal(outputs.ok, 'true');
   assert.deepEqual(warnings, ['Flate warnings: 2 uncategorised']);
   assert.match(files['report.md']!, /167 passed/);
-  // The stderr block joins the report and the single annotation.
+  // The stderr block joins the report and the single annotation, without the
+  // categories every CI render raises.
+  const withStderr = { ...deps, env: { ...deps.env, TEST_STDERR_FILE: 'stderr.txt' } };
   files['stderr.txt'] = stderrWarnings;
   warnings.length = 0;
-  await runEvaluate({ ...deps, env: { ...deps.env, TEST_STDERR_FILE: 'stderr.txt' } });
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!, /2 SOPSUnreadable/);
-  assert.match(files['report.md']!, /<summary>Flate warnings: [^<]*1 SourceCredentialsUnavailable[^<]*<\/summary>/);
-  assert.match(files['report.md']!, /- \[SOPSUnreadable\] Secret backup\/backup: [^\n]* restic-root/);
+  await runEvaluate(withStderr);
+  assert.deepEqual(warnings, ['Flate warnings: 2 uncategorised']);
+  assert.doesNotMatch(files['report.md']!, /SOPSUnreadable|SourceCredentialsUnavailable|RenderPersistenceDisabled/);
+  files['stderr.txt'] = orphanWarning;
+  warnings.length = 0;
+  await runEvaluate(withStderr);
+  assert.deepEqual(warnings, ['Flate warnings: 2 uncategorised, 1 OrphanedResource']);
+  assert.match(files['report.md']!, /- \[OrphanedResource\] Kustomization flux-system\/echo: resource orphaned fixtures\/cluster\/flux\/apps\.yaml, /);
+  assert.doesNotMatch(files['report.md']!, /RenderPersistenceDisabled/);
+  // Nothing but expected warnings: no section and no annotation.
+  files['test.txt'] = missingCredentials;
+  files['stderr.txt'] = stderrWarnings;
+  warnings.length = 0;
+  await runEvaluate({ ...withStderr, env: { ...withStderr.env, ALLOWED_SKIPS: 'flux-system/private-source' } });
+  assert.deepEqual(warnings, []);
+  assert.doesNotMatch(files['report.md']!, /Flate warnings/);
+  files['test.txt'] = healthy;
   await assert.rejects(runEvaluate({ ...deps, env: { ...deps.env, ALLOWED_SKIPS: '' } }), /Flate validation failed:[\s\S]*private-cluster/);
   // A missing rendered file means the build did not run; an empty one is a problem.
   await runEvaluate({ ...deps, env: { ...deps.env, RENDERED_FILE: 'rendered.yaml' } });

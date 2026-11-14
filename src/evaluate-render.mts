@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { evaluate, parseFlateTest, renderTestReport, summarizeWarnings } from './flate-summary.mts';
+import { evaluate, parseFlateTest, renderTestReport, summarizeWarnings, unexpectedWarnings } from './flate-summary.mts';
 import { classify } from './classify.mts';
 import { parseList } from './check-images.mts';
 import type { Core } from './types.mts';
@@ -48,8 +48,9 @@ export default async function run({
   core.info(`changed: ${classification.images.length} images, ${classification.helmReleases.length} HelmReleases, ${classification.kustomizations.length} Kustomizations, kinds [${classification.kinds.join(', ')}]`);
 
   const parsed = parseFlateTest(read(testFile));
-  // Flate 0.7 prints the warnings block on stderr.
-  parsed.warnings.push(...parseFlateTest(readOptional(read, env.TEST_STDERR_FILE)).warnings);
+  // Flate 0.7 prints the warnings block on stderr. The expected categories
+  // stay in the job log and the stderr file only.
+  parsed.warnings = unexpectedWarnings([...parsed.warnings, ...parseFlateTest(readOptional(read, env.TEST_STDERR_FILE)).warnings]);
   // The file is absent when the test failed and the build never ran.
   let renderedNothing = false;
   if (env.RENDERED_FILE) {
@@ -59,7 +60,7 @@ export default async function run({
   write(reportFile, renderTestReport(parsed, evaluation));
   core.setOutput('passed', String(parsed.summary?.passed ?? 0));
   core.setOutput('ok', String(evaluation.ok));
-  // One annotation: the report lists them, and a cluster render has dozens.
+  // One annotation; the report lists them.
   if (parsed.warnings.length) core.warning?.(`Flate warnings: ${summarizeWarnings(parsed.warnings)}`);
   if (!evaluation.ok) throw new Error(`Flate validation failed:\n${evaluation.problems.join('\n')}`);
   core.info(`Flate rendered ${parsed.summary?.passed ?? 0} resources successfully.`);
