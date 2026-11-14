@@ -38,7 +38,7 @@ flate() {
   echo "flate $*" >> "$OUTPUT_DIR/calls.txt"
   [[ -z "$FLATE_BASE" ]] || { echo "FLATE_BASE must be cleared" >&2; return 90; }
   case "$1 $2" in
-    "test all") echo "  ✓  HelmRelease  a/b"; echo; echo "  ✓ 1 passed   1s"; [[ "\${TEST_FAILS:-}" == true ]] && return 1; return 0 ;;
+    "test all") echo "  ⚠ warnings (1)" >&2; echo "    [SOPSUnreadable] Secret a/b: unreadable" >&2; echo "  ✓  HelmRelease  a/b"; echo; echo "  ✓ 1 passed   1s"; [[ "\${TEST_FAILS:-}" == true ]] && return 1; return 0 ;;
     "build all") echo "kind: Deployment" ;;
     "diff all") [[ "\${DIFF_FAILS:-}" == true ]] && return 1; echo "@@ x @@"; echo "+ change" ;;
     "diff images") [[ "\${DIFF_FAILS:-}" == true ]] && return 1; echo '["ghcr.io/a/b:2"]' ;;
@@ -61,6 +61,9 @@ test('render script diffs against the baseline and records every result file', (
       '',
     ].join('\n'));
     assert.match(fs.readFileSync(path.join(out, 'test.txt'), 'utf8'), /1 passed/);
+    // Warnings arrive on stderr and are kept apart from the result lines.
+    assert.doesNotMatch(fs.readFileSync(path.join(out, 'test.txt'), 'utf8'), /warnings/);
+    assert.match(fs.readFileSync(path.join(out, 'test-stderr.txt'), 'utf8'), /\[SOPSUnreadable\] Secret a\/b: unreadable/);
     assert.equal(fs.readFileSync(path.join(out, 'rendered.yaml'), 'utf8'), 'kind: Deployment\n');
     assert.match(fs.readFileSync(path.join(out, 'diff.md'), 'utf8'), /\+ change/);
     assert.equal(fs.readFileSync(path.join(out, 'images.json'), 'utf8').trim(), '["ghcr.io/a/b:2"]');
