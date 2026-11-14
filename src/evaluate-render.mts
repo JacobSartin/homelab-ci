@@ -48,7 +48,12 @@ export default async function run({
   core.info(`changed: ${classification.images.length} images, ${classification.helmReleases.length} HelmReleases, ${classification.kustomizations.length} Kustomizations, kinds [${classification.kinds.join(', ')}]`);
 
   const parsed = parseFlateTest(read(testFile));
-  const evaluation = evaluate(parsed, { allowedSkips: parseList(env.ALLOWED_SKIPS) });
+  // The file is absent when the test failed and the build never ran.
+  let renderedNothing = false;
+  if (env.RENDERED_FILE) {
+    try { renderedNothing = read(env.RENDERED_FILE).trim() === ''; } catch { /* no build */ }
+  }
+  const evaluation = evaluate(parsed, { allowedSkips: parseList(env.ALLOWED_SKIPS), renderedNothing });
   write(reportFile, renderTestReport(parsed, evaluation));
   core.setOutput('passed', String(parsed.summary?.passed ?? 0));
   core.setOutput('ok', String(evaluation.ok));

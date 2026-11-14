@@ -79,6 +79,7 @@ runs:
         EVALUATE_MODULE: ${{ github.action_path }}/../../src/evaluate-render.mts
         TEST_OUTPUT_FILE: ${{ inputs.output-dir }}/test.txt
         REPORT_FILE: ${{ inputs.output-dir }}/test-report.md
+        RENDERED_FILE: ${{ inputs.output-dir }}/rendered.yaml
         DIFF_FILE: ${{ inputs.output-dir }}/diff.md
         IMAGES_FILE: ${{ inputs.output-dir }}/images.json
         CLASSIFICATION_FILE: ${{ inputs.output-dir }}/classification.json

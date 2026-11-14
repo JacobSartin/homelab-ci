@@ -31,6 +31,26 @@ const blocked = `
   ✗ 5 passed · 1 skipped · 1 failed · 1 blocked   4.1s
 `;
 
+// Flate 0.7.3 with FLATE_ALLOW_MISSING_KINDS=Secret; warnings go to stderr.
+const missingCredentials = `
+  ✓  Kustomization   flux-system/echo
+  ‒  Kustomization   flux-system/external-dependency  suspended
+  ‒  Kustomization   flux-system/private-source  source GitRepository.source.toolkit.fluxcd.io/flux-system/private-source skipped: secret flux-system/private-source-deploy-key not found
+  ✓  HelmRelease     echo/echo
+  ✓  GitRepository   flux-system/fixture
+  ‒  GitRepository   flux-system/private-source  secret flux-system/private-source-deploy-key not found
+
+  ✓ 3 passed · 3 skipped   0.3s
+`;
+
+// Flate 0.7.3 without it: the source fails instead of being skipped.
+const credentialsNotTolerated = `
+  ✓  Kustomization   flux-system/private-source
+  ✗  GitRepository   flux-system/private-source  secret flux-system/private-source-deploy-key not found
+
+  ✗ 1 passed · 1 failed   0.0s
+`;
+
 test('parses resource lines, warnings and the summary', () => {
   const parsed = parseFlateTest(healthy);
   assert.deepEqual(parsed.summary, { passed: 167, skipped: 4, failed: 0, blocked: 0 });
@@ -58,6 +78,16 @@ test('skipped sources must be allowed explicitly; suspended stand-ins are always
   assert.ok(!stubbed.problems.some(problem => problem.includes('grafana-operator')));
 });
 
+test('a source without credentials is allowed only while Flate skips it', () => {
+  const skipped = parseFlateTest(missingCredentials);
+  assert.deepEqual(skipped.summary, { passed: 3, skipped: 3, failed: 0, blocked: 0 });
+  assert.equal(evaluate(skipped, { allowedSkips: ['flux-system/private-source'] }).ok, true);
+  assert.equal(evaluate(skipped).problems.length, 2);
+  assert.deepEqual(evaluate(parseFlateTest(credentialsNotTolerated), { allowedSkips: ['flux-system/private-source'] }).problems, [
+    'GitRepository flux-system/private-source failed: secret flux-system/private-source-deploy-key not found',
+  ]);
+});
+
 test('failed and blocked resources, missing summaries and empty renders are problems', () => {
   const evaluation = evaluate(parseFlateTest(blocked));
   assert.deepEqual(evaluation.problems, [
@@ -68,6 +98,10 @@ test('failed and blocked resources, missing summaries and empty renders are prob
   assert.match(silent.problems[0]!, /did not print a test summary/);
   const nothingRendered = evaluate(parseFlateTest('  ✗  HelmRelease  a/b  boom\n\n  ✗ 0 passed · 1 failed   1s\n'));
   assert.ok(nothingRendered.problems.some(problem => problem === 'No HelmRelease rendered successfully.'));
+  // Flate 0.7 passes Kustomizations orphaned by a suspended owner without emitting them.
+  const orphaned = parseFlateTest('  ✓  Kustomization  flux-system/echo\n\n  ✓ 1 passed   0.0s\n');
+  assert.equal(evaluate(orphaned).ok, true);
+  assert.deepEqual(evaluate(orphaned, { renderedNothing: true }).problems, ['Flate reconciled the repository but rendered no manifests.']);
 });
 
 test('report lists the summary, problems, skips and warnings', () => {
@@ -97,5 +131,11 @@ test('evaluate-render entry point writes the report and fails the step on proble
   assert.equal(warnings.length, 2);
   assert.match(files['report.md']!, /167 passed/);
   await assert.rejects(runEvaluate({ ...deps, env: { ...deps.env, ALLOWED_SKIPS: '' } }), /Flate validation failed:[\s\S]*private-cluster/);
+  // A missing rendered file means the build did not run; an empty one is a problem.
+  await runEvaluate({ ...deps, env: { ...deps.env, RENDERED_FILE: 'rendered.yaml' } });
+  files['rendered.yaml'] = 'kind: Deployment\n';
+  await runEvaluate({ ...deps, env: { ...deps.env, RENDERED_FILE: 'rendered.yaml' } });
+  files['rendered.yaml'] = '\n';
+  await assert.rejects(runEvaluate({ ...deps, env: { ...deps.env, RENDERED_FILE: 'rendered.yaml' } }), /rendered no manifests/);
   await assert.rejects(runEvaluate({ ...deps, env: {} }), /TEST_OUTPUT_FILE and REPORT_FILE/);
 });

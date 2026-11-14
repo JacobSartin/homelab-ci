@@ -1,6 +1,7 @@
 ---
 # A dependency that another repository provides in the live cluster. The
 # suspended stand-in lets Flate resolve dependsOn without rendering anything.
+# Its path must not be a directory that holds other Flux objects.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

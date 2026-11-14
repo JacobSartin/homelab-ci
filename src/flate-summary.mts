@@ -88,6 +88,8 @@ export interface EvaluateOptions {
   // `private-system/private-cluster` that may stay skipped: sources living in other
   // repositories that only the live cluster can fetch.
   allowedSkips?: string[];
+  // The build ran and produced no manifests.
+  renderedNothing?: boolean;
 }
 
 export interface Evaluation {
@@ -100,7 +102,7 @@ function allowed(entry: Entry, allowedSkips: string[]): boolean {
   return allowedSkips.some(pattern => pattern === entry.name || pattern === `${entry.kind} ${entry.name}`);
 }
 
-export function evaluate(parsed: Parsed, { allowedSkips = [] }: EvaluateOptions = {}): Evaluation {
+export function evaluate(parsed: Parsed, { allowedSkips = [], renderedNothing = false }: EvaluateOptions = {}): Evaluation {
   const problems: string[] = [];
   if (!parsed.summary) problems.push('Flate did not print a test summary; the render did not complete.');
   for (const entry of parsed.entries) {
@@ -114,6 +116,9 @@ export function evaluate(parsed: Parsed, { allowedSkips = [] }: EvaluateOptions 
   const passedHelmReleases = parsed.entries.filter(entry => entry.status === 'pass' && entry.kind === 'HelmRelease').length;
   const anyHelmReleases = parsed.entries.some(entry => entry.kind === 'HelmRelease');
   if (anyHelmReleases && passedHelmReleases === 0) problems.push('No HelmRelease rendered successfully.');
+  // Resources can pass without emitting anything, for example Kustomizations
+  // orphaned by a suspended owner.
+  if (renderedNothing) problems.push('Flate reconciled the repository but rendered no manifests.');
   return { ok: problems.length === 0, problems };
 }
 
