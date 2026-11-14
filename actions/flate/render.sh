@@ -16,7 +16,9 @@ export FLATE_NO_PROGRESS=true
 
 echo "::group::flate test all"
 test_status=0
-flate test all --path "$path" | tee "$OUTPUT_DIR/test.txt" || test_status=$?
+# Flate prints its warnings on stderr; keep them for the report.
+flate test all --path "$path" 2> "$OUTPUT_DIR/test-stderr.txt" | tee "$OUTPUT_DIR/test.txt" || test_status=$?
+cat "$OUTPUT_DIR/test-stderr.txt" >&2
 echo "::endgroup::"
 if (( test_status != 0 )); then
   # Building and diffing would repeat the same failures; the evaluation step

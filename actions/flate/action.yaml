@@ -18,7 +18,7 @@ inputs:
     description: Newline-delimited `Kind namespace/name` entries allowed to stay skipped (sources only the live cluster can fetch)
     default: ""
   output-dir:
-    description: Directory receiving test.txt, test-report.md, rendered.yaml, diff.md and images.json
+    description: Directory receiving test.txt, test-stderr.txt, test-report.md, rendered.yaml, diff.md and images.json
     default: ${{ runner.temp }}/render
   flate-version:
     description: Flate release to install
@@ -78,6 +78,7 @@ runs:
       env:
         EVALUATE_MODULE: ${{ github.action_path }}/../../src/evaluate-render.mts
         TEST_OUTPUT_FILE: ${{ inputs.output-dir }}/test.txt
+        TEST_STDERR_FILE: ${{ inputs.output-dir }}/test-stderr.txt
         REPORT_FILE: ${{ inputs.output-dir }}/test-report.md
         RENDERED_FILE: ${{ inputs.output-dir }}/rendered.yaml
         DIFF_FILE: ${{ inputs.output-dir }}/diff.md

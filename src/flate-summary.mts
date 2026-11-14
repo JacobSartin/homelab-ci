@@ -61,13 +61,18 @@ export function parseFlateTest(text: string): Parsed {
     if (inWarnings) {
       if (!line.trim()) continue;
       const indent = line.length - line.trimStart().length;
-      if (indent >= 6 && header) {
-        details.push(line.trim());
-      } else {
-        flushWarning();
-        header = line.trim();
+      if (indent >= 4) {
+        if (indent >= 6 && header) {
+          details.push(line.trim());
+        } else {
+          flushWarning();
+          header = line.trim();
+        }
+        continue;
       }
-      continue;
+      // A shallower line is not part of the block.
+      flushWarning();
+      inWarnings = false;
     }
     const entryMatch = /^\s*([✓✗‒⊘])\s+(\S+)\s+(\S+)(?:\s+(.*))?$/u.exec(line);
     if (entryMatch) {
@@ -122,6 +127,20 @@ export function evaluate(parsed: Parsed, { allowedSkips = [], renderedNothing = 
   return { ok: problems.length === 0, problems };
 }
 
+// Count warnings by their `[Category]` prefix, most frequent first, so an
+// unusual category stands out without reading every line.
+export function summarizeWarnings(warnings: string[]): string {
+  const counts = new Map<string, number>();
+  for (const warning of warnings) {
+    const category = /^\[(\w+)\]/.exec(warning)?.[1] ?? 'uncategorised';
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  return [...counts]
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([category, count]) => `${count} ${category}`)
+    .join(', ');
+}
+
 export function renderTestReport(parsed: Parsed, evaluation: Evaluation): string {
   const lines: string[] = [];
   const summary = parsed.summary;
@@ -144,7 +163,7 @@ export function renderTestReport(parsed: Parsed, evaluation: Evaluation): string
     lines.push('', '</details>');
   }
   if (parsed.warnings.length) {
-    lines.push('', '<details><summary>Flate warnings</summary>', '');
+    lines.push('', `<details><summary>Flate warnings: ${summarizeWarnings(parsed.warnings)}</summary>`, '');
     lines.push(...parsed.warnings.map(warning => `- ${warning}`));
     lines.push('', '</details>');
   }
