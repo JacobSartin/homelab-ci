@@ -8,7 +8,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 24h
-  path: ./fixtures/cluster/flux
+  path: ./fixtures/cluster/external
   prune: false
   sourceRef:
     kind: GitRepository
