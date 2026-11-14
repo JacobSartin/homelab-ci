@@ -65,7 +65,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         FLATE_PATH: ${{ inputs.path }}
-        FLATE_ALLOW_MISSING_SECRETS: "true"
+        FLATE_ALLOW_MISSING_KINDS: Secret
         FLATE_API_VERSIONS: ${{ inputs.api-versions }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
         RENDER_BASE: ${{ inputs.base }}
