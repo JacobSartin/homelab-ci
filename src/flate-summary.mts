@@ -127,6 +127,14 @@ export function evaluate(parsed: Parsed, { allowedSkips = [], renderedNothing = 
   return { ok: problems.length === 0, problems };
 }
 
+// Categories every CI render raises: it has no SOPS key and no deploy keys
+// (skipped sources are reported separately), and Flate is an unstamped binary.
+export const EXPECTED_WARNINGS = ['RenderPersistenceDisabled', 'SOPSUnreadable', 'SourceCredentialsUnavailable', 'UnresolvedSubstitution'];
+
+export function unexpectedWarnings(warnings: string[]): string[] {
+  return warnings.filter(warning => !EXPECTED_WARNINGS.includes(/^\[(\w+)\]/.exec(warning)?.[1] ?? ''));
+}
+
 // Count warnings by their `[Category]` prefix, most frequent first, so an
 // unusual category stands out without reading every line.
 export function summarizeWarnings(warnings: string[]): string {

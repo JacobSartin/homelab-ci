@@ -22,6 +22,13 @@ A Renovate image update therefore gets a rendered diff showing the new image
 and a registry lookup proving it can be pulled; a chart update gets the full
 rendered diff of the chart and a schema check of its output.
 
+The report leaves out the Flate warnings every CI render raises:
+`SOPSUnreadable`, `UnresolvedSubstitution` and `SourceCredentialsUnavailable`,
+because CI has neither the SOPS key nor the deploy keys, and
+`RenderPersistenceDisabled`, which concerns the Flate binary. They stay in the
+`Render` job log and in `test-stderr.txt` of the `gitops-render` artifact. Any
+other warning is listed, with a count per category.
+
 ## Consuming the workflow
 
 ```yaml
