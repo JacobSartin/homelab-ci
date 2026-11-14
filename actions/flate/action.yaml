@@ -65,7 +65,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         FLATE_PATH: ${{ inputs.path }}
-        FLATE_ALLOW_MISSING_SECRETS: "true"
+        FLATE_ALLOW_MISSING_KINDS: Secret
         FLATE_API_VERSIONS: ${{ inputs.api-versions }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
         RENDER_BASE: ${{ inputs.base }}
@@ -79,6 +79,7 @@ runs:
         EVALUATE_MODULE: ${{ github.action_path }}/../../src/evaluate-render.mts
         TEST_OUTPUT_FILE: ${{ inputs.output-dir }}/test.txt
         REPORT_FILE: ${{ inputs.output-dir }}/test-report.md
+        RENDERED_FILE: ${{ inputs.output-dir }}/rendered.yaml
         DIFF_FILE: ${{ inputs.output-dir }}/diff.md
         IMAGES_FILE: ${{ inputs.output-dir }}/images.json
         CLASSIFICATION_FILE: ${{ inputs.output-dir }}/classification.json

@@ -65,5 +65,7 @@ jobs:
     with:
       path: fixtures/cluster
       assignee: JacobSartin
+      allowed-skips: |-
+        flux-system/private-source
       substitutions: |-
         BASE_DOMAIN=example.invalid

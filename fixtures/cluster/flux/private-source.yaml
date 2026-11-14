@@ -1,0 +1,30 @@
+---
+# A repository only the live cluster can fetch: its deploy key is not in Git.
+# Flate skips the source and the Kustomization behind it; ci.yaml allows both.
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/source.toolkit.fluxcd.io/gitrepository_v1.json
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: private-source
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: ssh://git@github.com/JacobSartin/homelab-ci-private-source.git
+  ref:
+    branch: main
+  secretRef:
+    name: private-source-deploy-key
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: private-source
+  namespace: flux-system
+spec:
+  interval: 1h
+  path: ./apps
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: private-source

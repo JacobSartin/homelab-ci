@@ -109,12 +109,14 @@ something another repository provides is reported as blocked. Add a suspended
 stand-in Kustomization with the same name to the repository (see
 `fixtures/cluster/flux/external.yaml`); it resolves the dependency without
 rendering anything, and the render job tells you exactly which name is missing
-when a new dependency appears.
+when a new dependency appears. Point its `path` at a directory without Flux
+objects: Flate treats the Kustomization whose path holds them as their owner,
+and a suspended owner emits none of them.
 
 A self-referencing `GitRepository` with an SSH deploy key is aliased to the
 checkout automatically because its URL matches the repository remote. Sources
 pointing at other repositories cannot be fetched without their keys; list them
-in `allowed-skips`.
+in `allowed-skips` (see `fixtures/cluster/flux/private-source.yaml`).
 
 ## Development
 
