@@ -114,7 +114,7 @@ when a new dependency appears.
 A self-referencing `GitRepository` with an SSH deploy key is aliased to the
 checkout automatically because its URL matches the repository remote. Sources
 pointing at other repositories cannot be fetched without their keys; list them
-in `allowed-skips`.
+in `allowed-skips` (see `fixtures/cluster/flux/private-source.yaml`).
 
 ## Development
 
