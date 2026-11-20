@@ -1,6 +1,6 @@
 ---
-# ${BASE_DOMAIN} is a Flux postBuild variable that only the live cluster
-# provides; the schema step substitutes it before validation.
+# ${BASE_DOMAIN} comes from the SOPS Secret cluster-settings on the live
+# cluster; CI supplies a stand-in (fixtures/supply.yaml).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

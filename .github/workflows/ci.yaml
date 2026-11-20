@@ -67,5 +67,7 @@ jobs:
       assignee: JacobSartin
       allowed-skips: |-
         flux-system/private-source
+      supply: |-
+        fixtures/supply.yaml
       substitutions: |-
         BASE_DOMAIN=example.invalid
