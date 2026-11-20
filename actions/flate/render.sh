@@ -14,10 +14,19 @@ echo '[]' > "$OUTPUT_DIR/images.json"
 export FLATE_BASE=""
 export FLATE_NO_PROGRESS=true
 
+# Reference-only objects, such as stand-ins for SOPS substitution Secrets, so
+# Flux substitution runs before charts validate their values.
+supply=()
+while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
+  [[ -f "$file" ]] || { echo "::error::Supply file $file does not exist"; exit 1; }
+  supply+=(--supply "$file")
+done <<< "${FLATE_SUPPLY:-}"
+
 echo "::group::flate test all"
 test_status=0
 # Flate prints its warnings on stderr; keep them for the report.
-flate test all --path "$path" 2> "$OUTPUT_DIR/test-stderr.txt" | tee "$OUTPUT_DIR/test.txt" || test_status=$?
+flate test all --path "$path" "${supply[@]}" 2> "$OUTPUT_DIR/test-stderr.txt" | tee "$OUTPUT_DIR/test.txt" || test_status=$?
 cat "$OUTPUT_DIR/test-stderr.txt" >&2
 echo "::endgroup::"
 if (( test_status != 0 )); then
@@ -28,24 +37,24 @@ if (( test_status != 0 )); then
 fi
 
 echo "::group::flate build all"
-flate build all --path "$path" > "$OUTPUT_DIR/rendered.yaml"
+flate build all --path "$path" "${supply[@]}" > "$OUTPUT_DIR/rendered.yaml"
 echo "::endgroup::"
 
 if [[ -n "${RENDER_BASE:-}" ]]; then
   echo "::group::flate diff all --base $RENDER_BASE"
-  if ! flate diff all --path "$path" --base "$RENDER_BASE" -o github > "$OUTPUT_DIR/diff.md"; then
+  if ! flate diff all --path "$path" "${supply[@]}" --base "$RENDER_BASE" -o github > "$OUTPUT_DIR/diff.md"; then
     echo "::warning::Flate could not diff against $RENDER_BASE; the current revision was still validated."
     printf '! Diff unavailable: the baseline revision %s did not render. The current revision passed validation.\n' "$RENDER_BASE" > "$OUTPUT_DIR/diff.md"
   fi
   echo "::endgroup::"
   echo "::group::flate diff images --base $RENDER_BASE"
-  if ! flate diff images --path "$path" --base "$RENDER_BASE" -o json > "$OUTPUT_DIR/images.json"; then
+  if ! flate diff images --path "$path" "${supply[@]}" --base "$RENDER_BASE" -o json > "$OUTPUT_DIR/images.json"; then
     echo "::warning::Flate could not list changed images; verifying every image instead."
-    flate get images --path "$path" -o json > "$OUTPUT_DIR/images.json"
+    flate get images --path "$path" "${supply[@]}" -o json > "$OUTPUT_DIR/images.json"
   fi
   echo "::endgroup::"
 else
   echo "::group::flate get images"
-  flate get images --path "$path" -o json > "$OUTPUT_DIR/images.json"
+  flate get images --path "$path" "${supply[@]}" -o json > "$OUTPUT_DIR/images.json"
   echo "::endgroup::"
 fi

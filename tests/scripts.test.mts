@@ -70,6 +70,36 @@ test('render script diffs against the baseline and records every result file', (
   });
 });
 
+test('render script passes every supply file to each flate command', () => {
+  withTempDir('render-', dir => {
+    const out = path.join(dir, 'out');
+    fs.mkdirSync(path.join(dir, 'ci'));
+    fs.writeFileSync(path.join(dir, 'ci', 'settings.yaml'), 'kind: Secret\n');
+    fs.writeFileSync(path.join(dir, 'ci', 'pools.yaml'), 'kind: Secret\n');
+    // Blank lines are skipped.
+    const { status } = run(renderScript, flateStub, { OUTPUT_DIR: out, FLATE_BASE: 'main', RENDER_BASE: 'HEAD^1', FLATE_SUPPLY: 'ci/settings.yaml\n\nci/pools.yaml\n' }, dir);
+    assert.equal(status, 0);
+    const supply = '--supply ci/settings.yaml --supply ci/pools.yaml';
+    assert.equal(fs.readFileSync(path.join(out, 'calls.txt'), 'utf8'), [
+      `flate test all --path . ${supply}`,
+      `flate build all --path . ${supply}`,
+      `flate diff all --path . ${supply} --base HEAD^1 -o github`,
+      `flate diff images --path . ${supply} --base HEAD^1 -o json`,
+      '',
+    ].join('\n'));
+  });
+});
+
+test('render script rejects a missing supply file before rendering', () => {
+  withTempDir('render-', dir => {
+    const out = path.join(dir, 'out');
+    const { status, output } = run(renderScript, flateStub, { OUTPUT_DIR: out, FLATE_BASE: 'main', FLATE_SUPPLY: 'ci/missing.yaml' }, dir);
+    assert.equal(status, 1);
+    assert.match(output, /Supply file ci\/missing.yaml does not exist/);
+    assert.equal(fs.existsSync(path.join(out, 'calls.txt')), false);
+  });
+});
+
 test('render script lists every image without a baseline', () => {
   withTempDir('render-', dir => {
     const out = path.join(dir, 'out');

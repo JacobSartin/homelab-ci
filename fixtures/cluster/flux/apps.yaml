@@ -11,6 +11,10 @@ spec:
     - name: external-dependency
   interval: 1h
   path: ./fixtures/cluster/apps/echo
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-settings
   prune: true
   sourceRef:
     kind: GitRepository

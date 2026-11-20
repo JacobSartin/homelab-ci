@@ -24,6 +24,10 @@ on:
         description: Newline-delimited `Kind namespace/name` entries allowed to stay skipped because only the live cluster can fetch them
         type: string
         default: ""
+      supply:
+        description: Newline-delimited YAML files, relative to the repository, with reference-only objects for Flate (for example stand-ins for SOPS substitution Secrets)
+        type: string
+        default: ""
       substitutions:
         description: Newline-delimited NAME=value pairs replacing Flux postBuild placeholders before schema validation
         type: string
@@ -104,6 +108,7 @@ jobs:
           base: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
           api-versions: ${{ inputs.api-versions }}
           allowed-skips: ${{ inputs.allowed-skips }}
+          supply: ${{ inputs.supply }}
           output-dir: ${{ runner.temp }}/render
 
       - name: Upload render results

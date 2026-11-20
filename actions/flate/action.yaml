@@ -17,6 +17,9 @@ inputs:
   allowed-skips:
     description: Newline-delimited `Kind namespace/name` entries allowed to stay skipped (sources only the live cluster can fetch)
     default: ""
+  supply:
+    description: Newline-delimited YAML files, relative to working-directory, passed to every flate command as --supply
+    default: ""
   output-dir:
     description: Directory receiving test.txt, test-stderr.txt, test-report.md, rendered.yaml, diff.md and images.json
     default: ${{ runner.temp }}/render
@@ -67,6 +70,7 @@ runs:
         FLATE_PATH: ${{ inputs.path }}
         FLATE_ALLOW_MISSING_KINDS: Secret
         FLATE_API_VERSIONS: ${{ inputs.api-versions }}
+        FLATE_SUPPLY: ${{ inputs.supply }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
         RENDER_BASE: ${{ inputs.base }}
         RENDER_SCRIPT: ${{ github.action_path }}/render.sh

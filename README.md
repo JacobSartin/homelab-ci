@@ -65,6 +65,13 @@ Inputs:
   `namespace/name` or `Kind namespace/name` per line. Suspended stand-in
   Kustomizations never need listing. Any other skipped resource fails the
   render, because a skipped source silently hides every resource behind it.
+- `supply`: YAML files, one path per line relative to the repository, passed to
+  every `flate` command as `--supply`. Use them for stand-ins of SOPS Secrets
+  behind `postBuild.substituteFrom`, so Flux substitution runs before charts
+  check their values (see `fixtures/supply.yaml`). Give a stand-in for every
+  key: once a variable is readable, Flate empties the unavailable ones, as Flux
+  does. Keep the files outside the render path or in `.krmignore`, so Flate
+  does not also load them as repository objects.
 - `substitutions`: `NAME=value` lines replacing Flux `postBuild` variables that
   come from SOPS secrets before schema validation. Unknown placeholders become
   `placeholder`.

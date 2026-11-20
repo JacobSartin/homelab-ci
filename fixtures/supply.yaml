@@ -1,0 +1,10 @@
+---
+# Stand-in for the SOPS Secret behind postBuild.substituteFrom; outside the
+# render path so Flate reads it only through --supply.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-settings
+  namespace: flux-system
+stringData:
+  BASE_DOMAIN: example.invalid
