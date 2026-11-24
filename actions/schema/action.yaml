@@ -28,7 +28,7 @@ runs:
       uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
       with:
         # Pin the CLI too: the action otherwise downloads the latest release.
-        version: 2026.11.11
+        version: 2026.11.12
         cache: true
         cache_key_prefix: homelab-ci-kubeconform-v1
         install_args: kubeconform@${{ inputs.kubeconform-version }}
