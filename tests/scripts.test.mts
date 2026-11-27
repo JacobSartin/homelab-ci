@@ -230,6 +230,22 @@ test('secrets script checks every file a creation rule or the .sops name selects
   });
 });
 
+test('secrets script fails on a plaintext value added to an encrypted Secret', () => {
+  withTempDir('secrets-', dir => {
+    const enc = 'ENC[AES256_GCM,data:abc,iv:def,tag:ghi,type:str]';
+    secretsRepo(dir, {
+      'ok.sops.yaml': `kind: Secret\nmetadata:\n  name: ok\nstringData:\n  token: ${enc}\n  empty: ""\nsops:\n  version: 3.13.3\n`,
+      'bad.sops.yaml': `kind: Secret\nstringData:\n  token: ${enc}\n  added: by-hand\n---\nkind: Secret\ndata:\n  other: aGFuZA==\nsops:\n  version: 3.13.3\n`,
+    });
+    const { status, output } = run(secretsScript, secretsStub, { WORK: dir }, dir);
+    assert.equal(status, 1);
+    assert.match(output, /::error file=bad\.sops\.yaml::Plaintext value in an encrypted file \(added, other\)/);
+    assert.doesNotMatch(output, /file=ok\.sops\.yaml/);
+    // Only key names reach the log.
+    assert.doesNotMatch(output, /by-hand|aGFuZA==/);
+  });
+});
+
 test('secrets script fails on plaintext SOPS files and gitleaks findings', () => {
   withTempDir('secrets-', dir => {
     secretsRepo(dir, {
